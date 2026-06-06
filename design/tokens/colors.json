@@ -1,0 +1,29 @@
+{
+  "brand": {
+    "emerald": "#00B87A",
+    "electricBlue": "#00A3FF",
+    "deepNavy": "#071029",
+    "gold": "#FFD36E"
+  },
+  "background": {
+    "black": "#000000",
+    "darkGray": "#0B0F14",
+    "surface": "#0F1418"
+  },
+  "text": {
+    "primary": "#E6EEF3",
+    "secondary": "#A6B5BF",
+    "muted": "#6F7C84"
+  },
+  "success": "#18D58B",
+  "danger": "#FF4D6D",
+  "glass": {
+    "frost": "rgba(255,255,255,0.06)",
+    "frostStrong": "rgba(255,255,255,0.08)",
+    "blurTint": "rgba(255,255,255,0.02)"
+  },
+  "shadows": {
+    "soft": "rgba(2,6,23,0.6)",
+    "elevated": "rgba(2,6,23,0.8)"
+  }
+}
