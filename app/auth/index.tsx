@@ -13,6 +13,7 @@ import { authApi, getApiError } from '../../src/lib/api/index';
 import { setRefreshToken } from '../../src/lib/api';
 import { useAuthStore } from '../../src/store/auth';
 import { normalizePhone, isValidNigerianPhone } from '../../src/utils/index';
+import { DEMO_USER } from '../../src/lib/demo';
 
 // ── Password strength ─────────────────────────────────────────────────────────
 function PasswordStrength({ password }: { password: string }) {
@@ -143,7 +144,7 @@ function RegisterScreen({ onLogin, onOTP }: { onLogin: () => void; onOTP: (phone
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 function LoginScreen({ onRegister, onOTP }: { onRegister: () => void; onOTP: (phone: string) => void }) {
-  const { login } = useAuthStore();
+  const { login, loginDemo } = useAuthStore();
   const router = useRouter();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -213,6 +214,28 @@ function LoginScreen({ onRegister, onOTP }: { onRegister: () => void; onOTP: (ph
         <Pressable style={styles.otpBtn} onPress={sendOTPLogin}>
           <Text style={styles.otpBtnText}>Sign in with OTP</Text>
         </Pressable>
+
+        {/* ── Preview demo ── */}
+        <View style={styles.demoSection}>
+          <View style={styles.demoDivRow}>
+            <View style={styles.demoDivLine} />
+            <Text style={styles.demoDivText}>no backend?</Text>
+            <View style={styles.demoDivLine} />
+          </View>
+          <Pressable
+            style={({ pressed }) => [styles.demoBtn, { opacity: pressed ? 0.75 : 1 }]}
+            onPress={() => {
+              loginDemo(DEMO_USER);
+              router.replace('/(tabs)/home');
+            }}
+          >
+            <Text style={styles.demoBtnEmoji}>✦</Text>
+            <View>
+              <Text style={styles.demoBtnLabel}>Preview Design</Text>
+              <Text style={styles.demoBtnSub}>Full demo with sample Nigerian data</Text>
+            </View>
+          </Pressable>
+        </View>
 
         <TouchableOpacity onPress={onRegister} style={styles.switchRow}>
           <Text style={styles.switchText}>Don't have an account? </Text>
@@ -546,6 +569,50 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.semibold,
     fontSize: typography.size.base,
     color: colors.klakGreen,
+  },
+
+  // Demo section
+  demoSection: { gap: spacing[4], marginTop: spacing[5] },
+  demoDivRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+  },
+  demoDivLine: { flex: 1, height: 1, backgroundColor: colors.border },
+  demoDivText: {
+    fontFamily: typography.family.regular,
+    fontSize: typography.size.xs,
+    color: colors.textMuted,
+    letterSpacing: typography.tracking.wide,
+  },
+  demoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[4],
+    backgroundColor: colors.klakGoldGlow,
+    borderRadius: radius.xl,
+    borderWidth: 1.5,
+    borderColor: colors.klakGold + '40',
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[4],
+  },
+  demoBtnEmoji: {
+    fontSize: 24,
+    color: colors.klakGold,
+    fontFamily: typography.family.bold,
+    width: 32,
+    textAlign: 'center',
+  },
+  demoBtnLabel: {
+    fontFamily: typography.family.bold,
+    fontSize: typography.size.base,
+    color: colors.klakGold,
+  },
+  demoBtnSub: {
+    fontFamily: typography.family.regular,
+    fontSize: typography.size.xs,
+    color: colors.textSec,
+    marginTop: 2,
   },
 
   otpIconWrap: {
