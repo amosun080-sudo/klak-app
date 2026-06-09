@@ -6,10 +6,8 @@ interface AuthState {
   accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  isDemoMode: boolean;
 
   login: (tokens: AuthTokens, user: User) => void;
-  loginDemo: (user: User) => void;
   logout: () => void;
   setAccessToken: (token: string) => void;
   updateUser: (partial: Partial<User>) => void;
@@ -21,22 +19,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   accessToken: null,
   isAuthenticated: false,
   isLoading: true,
-  isDemoMode: false,
 
   login: (tokens, user) => set({
     user,
     accessToken: tokens.accessToken,
     isAuthenticated: true,
     isLoading: false,
-    isDemoMode: false,
-  }),
-
-  loginDemo: (user) => set({
-    user,
-    accessToken: 'demo-access-token',
-    isAuthenticated: true,
-    isLoading: false,
-    isDemoMode: true,
   }),
 
   logout: () => set({
@@ -44,7 +32,6 @@ export const useAuthStore = create<AuthState>((set) => ({
     accessToken: null,
     isAuthenticated: false,
     isLoading: false,
-    isDemoMode: false,
   }),
 
   setAccessToken: (token) => set({ accessToken: token }),

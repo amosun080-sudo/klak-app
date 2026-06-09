@@ -1,4 +1,4 @@
-import 'tsx/cjs'; // Add this to import TypeScript files
+import 'tsx/cjs';
 import { ExpoConfig } from 'expo/config';
 
 const config: ExpoConfig = {
@@ -7,33 +7,43 @@ const config: ExpoConfig = {
   version: '1.0.0',
   orientation: 'portrait',
   userInterfaceStyle: 'dark',
-  platforms: ['ios', 'android', 'web'],
+  platforms: ['ios', 'android'],
   splash: {
     resizeMode: 'contain',
-    backgroundColor: '#071B11',
+    backgroundColor: '#060E07',
   },
   ios: {
     supportsTablet: false,
     bundleIdentifier: 'ng.getklak.app',
+    buildNumber: '1',
     infoPlist: {
       NSFaceIDUsageDescription: 'Used for biometric login',
+      NSCameraUsageDescription: 'Used to scan QR codes for account linking',
     },
   },
   android: {
     package: 'ng.getklak.app',
+    versionCode: 1,
+    adaptiveIcon: {
+      foregroundImage: './assets/adaptive-icon.png',
+      backgroundColor: '#060E07',
+    },
     permissions: [
       'android.permission.INTERNET',
       'android.permission.RECEIVE_BOOT_COMPLETED',
       'android.permission.VIBRATE',
     ],
   },
-  web: {
-    bundler: 'metro',
-  },
   plugins: [
     'expo-router',
     'expo-secure-store',
-    'expo-notifications',
+    [
+      'expo-notifications',
+      {
+        icon: './assets/notification-icon.png',
+        color: '#00D68F',
+      },
+    ],
   ],
   scheme: 'klak',
   experiments: {
@@ -44,7 +54,8 @@ const config: ExpoConfig = {
     monoPublicKey:  process.env.EXPO_PUBLIC_MONO_PUBLIC_KEY,
     googleClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
     eas: {
-      projectId: 'YOUR_EAS_PROJECT_ID',
+      // Replace with your actual EAS project ID from: npx eas init
+      projectId: process.env.EAS_PROJECT_ID ?? 'YOUR_EAS_PROJECT_ID',
     },
   },
 };

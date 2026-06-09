@@ -10,8 +10,7 @@ import { subscriptionsApi, getApiError } from '../src/lib/api/index';
 import { useAuthStore } from '../src/store/auth';
 import { colors } from '../src/theme/colors';
 import { typography, spacing, radius, shadow } from '../src/theme/index';
-import { Button, Skeleton, EmptyState } from '../src/components/layout/index';
-import { planMeetsRequirement } from '../src/utils/index';
+import { Button, Skeleton } from '../src/components/layout/index';
 
 const PLAN_FEATURES = {
   FREE: [
@@ -43,20 +42,31 @@ const PLAN_FEATURES = {
 
 type PlanKey = 'FREE' | 'PRO' | 'PREMIUM';
 
-const PLAN_META: Record<PlanKey, { name: string; price: string; sub: string; gradientColors: readonly [string, string]; accentColor: string }> = {
-  FREE:    { name: 'See Am',  price: '₦0',     sub: 'Forever free',                     gradientColors: ['#0C1A0E', '#111F13'], accentColor: colors.textMuted  },
-  PRO:     { name: 'Know Am', price: '₦2,000', sub: '₦19,200/yr · save ₦4,800',         gradientColors: ['#0A2B1A', '#061A10'], accentColor: colors.klakGreen  },
-  PREMIUM: { name: 'Gbam',   price: '₦4,000', sub: '₦38,400/yr · save ₦9,600',         gradientColors: ['#2A1E0A', '#1A1206'], accentColor: colors.klakGold   },
+const PLAN_META: Record<PlanKey, {
+  name: string;
+  price: string;
+  sub: string;
+  gradientColors: readonly [string, string];
+  accentColor: string;
+}> = {
+  FREE:    { name: 'See Am',  price: '₦0',     sub: 'Forever free',                     gradientColors: ['#0C1A0E', '#111F13'], accentColor: colors.textMuted },
+  PRO:     { name: 'Know Am', price: '₦2,000', sub: '₦19,200/yr · save ₦4,800',         gradientColors: ['#0A2B1A', '#061A10'], accentColor: colors.klakGreen },
+  PREMIUM: { name: 'Gbam',   price: '₦4,000', sub: '₦38,400/yr · save ₦9,600',         gradientColors: ['#2A1E0A', '#1A1206'], accentColor: colors.klakGold  },
 };
 
-export default function SubscriptionScreen() {
-  const user = useAuthStore(s => s.user);
-  const currentPlan: PlanKey = user?.plan ?? 'FREE';
+// Fallback IDs used when the plans API hasn't loaded yet
+const PLAN_SLUGS: PlanKey[] = ['FREE', 'PRO', 'PREMIUM'];
 
-  const { data: plansData, isLoading, isError, refetch } = useQuery({
+export default function SubscriptionScreen() {
+  const user        = useAuthStore(s => s.user);
+  const currentPlan: PlanKey = (user?.plan as PlanKey) ?? 'FREE';
+
+  // Fetch live plan IDs for payment initiation — non-blocking, always show cards
+  const { data: plansData, isLoading: plansLoading } = useQuery({
     queryKey: ['plans'],
     queryFn: () => subscriptionsApi.plans().then(r => r.data.data),
     staleTime: 60 * 60 * 1000,
+    retry: 1,
   });
 
   const { mutate: initiate, isPending } = useMutation({
@@ -74,14 +84,15 @@ export default function SubscriptionScreen() {
   const handleCancel = () => Alert.alert(
     'Cancel Subscription',
     'You will lose premium features at the end of your current period.',
-    [{ text: 'Keep plan', style: 'cancel' }, { text: 'Cancel', style: 'destructive', onPress: () => cancel() }],
+    [
+      { text: 'Keep plan', style: 'cancel' },
+      { text: 'Cancel', style: 'destructive', onPress: () => cancel() },
+    ],
   );
 
-  const plans: Array<{ slug: PlanKey; id: string }> = [
-    { slug: 'FREE',    id: 'free' },
-    { slug: 'PRO',     id: plansData?.find(p => p.slug === 'PRO')?.id    ?? 'pro' },
-    { slug: 'PREMIUM', id: plansData?.find(p => p.slug === 'PREMIUM')?.id ?? 'premium' },
-  ];
+  // Get plan ID from live data if available, otherwise fall back to slug
+  const getPlanId = (slug: PlanKey): string =>
+    plansData?.find(p => p.slug === slug)?.id ?? slug.toLowerCase();
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -101,22 +112,25 @@ export default function SubscriptionScreen() {
           <Text style={styles.heroSub}>Three plans. No hidden fees. Cancel anytime.</Text>
         </View>
 
-        {/* Plan cards */}
-        {isLoading ? (
-          <View style={{ gap: spacing[4] }}>
-            {[0,1,2].map(k => (
-              <Skeleton key={k} width="100%" height={220} style={{ borderRadius: radius['2xl'] }} />
-            ))}
-          </View>
-        ) : isError ? (
-          <EmptyState emoji="⚠️" title="Could not load plans" subtitle="Pull down to retry." action={{ label: 'Retry', onPress: refetch }} />
-        ) : (
-          plans.map(({ slug, id }) => {
-            const meta       = PLAN_META[slug];
-            const features   = PLAN_FEATURES[slug];
-            const isCurrent  = slug === currentPlan;
-            const isPopular  = slug === 'PRO';
-            const isPremium  = slug === 'PREMIUM';
+        {/* Current plan callout */}
+        <View style={[styles.currentPlanBanner, { borderColor: PLAN_META[currentPlan].accentColor + '50' }]}>
+          <Text style={styles.currentPlanLabel}>YOUR CURRENT PLAN</Text>
+          <Text style={[styles.currentPlanName, { color: PLAN_META[currentPlan].accentColor }]}>
+            {PLAN_META[currentPlan].name}
+          </Text>
+          <Text style={styles.currentPlanSub}>
+            {currentPlan === 'FREE' ? 'Upgrade to unlock more features' : 'Thank you for being a Klak member'}
+          </Text>
+        </View>
+
+        {/* Plan cards — always rendered regardless of API state */}
+        <View style={styles.plansList}>
+          {PLAN_SLUGS.map((slug) => {
+            const meta      = PLAN_META[slug];
+            const features  = PLAN_FEATURES[slug];
+            const isCurrent = slug === currentPlan;
+            const isPopular = slug === 'PRO';
+            const isPremium = slug === 'PREMIUM';
 
             return (
               <View key={slug} style={styles.planWrap}>
@@ -137,14 +151,12 @@ export default function SubscriptionScreen() {
                   end={{ x: 1, y: 1 }}
                   style={[
                     styles.planCard,
-                    { borderColor: isCurrent ? meta.accentColor + '60' : colors.glassBorder },
-                    isCurrent && { borderWidth: 1.5 },
+                    isCurrent && { borderColor: meta.accentColor + '60', borderWidth: 1.5 },
                   ]}
                 >
-                  {/* Orb */}
                   <View style={[styles.planOrb, { backgroundColor: meta.accentColor }]} />
 
-                  {/* Top row */}
+                  {/* Plan header */}
                   <View style={styles.planTop}>
                     <View style={styles.planTopLeft}>
                       <Text style={[styles.planName, { color: meta.accentColor }]}>{meta.name}</Text>
@@ -155,13 +167,17 @@ export default function SubscriptionScreen() {
                       <Text style={styles.planSub}>{meta.sub}</Text>
                     </View>
                     {isCurrent && (
-                      <View style={[styles.currentBadge, { backgroundColor: meta.accentColor + '20', borderColor: meta.accentColor + '40' }]}>
-                        <Text style={[styles.currentBadgeText, { color: meta.accentColor }]}>Active</Text>
+                      <View style={[styles.currentBadge, {
+                        backgroundColor: meta.accentColor + '20',
+                        borderColor: meta.accentColor + '40',
+                      }]}>
+                        <Text style={[styles.currentBadgeText, { color: meta.accentColor }]}>
+                          ✓ Active
+                        </Text>
                       </View>
                     )}
                   </View>
 
-                  {/* Divider */}
                   <View style={[styles.planDivider, { backgroundColor: meta.accentColor + '20' }]} />
 
                   {/* Features */}
@@ -176,13 +192,17 @@ export default function SubscriptionScreen() {
 
                   {/* CTA */}
                   {!isCurrent && slug !== 'FREE' && (
-                    <Button
-                      label={isPending ? 'Redirecting…' : `Upgrade to ${meta.name}`}
-                      onPress={() => initiate(id)}
-                      loading={isPending}
-                      variant={isPremium ? 'gold' : 'primary'}
-                      style={{ marginTop: spacing[5] }}
-                    />
+                    plansLoading ? (
+                      <Skeleton width="100%" height={50} style={{ borderRadius: radius.full, marginTop: spacing[5] }} />
+                    ) : (
+                      <Button
+                        label={isPending ? 'Redirecting…' : `Upgrade to ${meta.name}`}
+                        onPress={() => initiate(getPlanId(slug))}
+                        loading={isPending}
+                        variant={isPremium ? 'gold' : 'primary'}
+                        style={{ marginTop: spacing[5] }}
+                      />
+                    )
                   )}
                   {isCurrent && slug !== 'FREE' && (
                     <Button
@@ -195,14 +215,16 @@ export default function SubscriptionScreen() {
                   )}
                   {slug === 'FREE' && !isCurrent && (
                     <View style={styles.freeNote}>
-                      <Text style={styles.freeNoteText}>Downgrade to free by cancelling your subscription.</Text>
+                      <Text style={styles.freeNoteText}>
+                        Downgrade to free by cancelling your current subscription.
+                      </Text>
                     </View>
                   )}
                 </LinearGradient>
               </View>
             );
-          })
-        )}
+          })}
+        </View>
 
         <Text style={styles.footerNote}>
           Payments processed securely via Paystack. Cancel anytime from this page.
@@ -223,122 +245,60 @@ const styles = StyleSheet.create({
   headerTitle: { fontFamily: typography.family.extrabold, fontSize: typography.size.lg, color: colors.white },
   scroll: { padding: spacing[5], paddingBottom: spacing[12], gap: spacing[5] },
 
-  // Hero
-  heroSection: { gap: spacing[2], marginBottom: spacing[2] },
-  heroEyebrow: {
+  heroSection: { gap: spacing[2] },
+  heroEyebrow: { fontFamily: typography.family.semibold, fontSize: typography.size.xs, color: colors.klakGreen, letterSpacing: typography.tracking.widest },
+  heroTitle: { fontFamily: typography.family.extrabold, fontSize: typography.size.xl, color: colors.white, letterSpacing: typography.tracking.tight },
+  heroSub: { fontFamily: typography.family.regular, fontSize: typography.size.sm, color: colors.textSec },
+
+  // Current plan banner
+  currentPlanBanner: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    borderWidth: 1.5,
+    padding: spacing[4],
+    gap: spacing[1],
+  },
+  currentPlanLabel: {
     fontFamily: typography.family.semibold,
     fontSize: typography.size.xs,
-    color: colors.klakGreen,
+    color: colors.textMuted,
     letterSpacing: typography.tracking.widest,
   },
-  heroTitle: {
+  currentPlanName: {
     fontFamily: typography.family.extrabold,
     fontSize: typography.size.xl,
-    color: colors.white,
     letterSpacing: typography.tracking.tight,
-    lineHeight: typography.size.xl * 1.25,
   },
-  heroSub: {
+  currentPlanSub: {
     fontFamily: typography.family.regular,
     fontSize: typography.size.sm,
     color: colors.textSec,
   },
 
-  // Plan
+  plansList: { gap: spacing[5] },
   planWrap: { position: 'relative' },
   popularBanner: {
-    position: 'absolute',
-    top: -12, left: spacing[5],
-    zIndex: 1,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing[4],
-    paddingVertical: 4,
+    position: 'absolute', top: -12, left: spacing[5], zIndex: 1,
+    borderRadius: radius.full, paddingHorizontal: spacing[4], paddingVertical: 4,
   },
-  popularBannerText: {
-    fontFamily: typography.family.bold,
-    fontSize: 10,
-    color: colors.background,
-    letterSpacing: typography.tracking.widest,
-  },
-  planCard: {
-    borderRadius: radius['2xl'],
-    padding: spacing[6],
-    borderWidth: 1,
-    overflow: 'hidden',
-    ...shadow.card,
-  },
-  planOrb: {
-    position: 'absolute',
-    width: 160, height: 160,
-    borderRadius: 80,
-    top: -80, right: -60,
-    opacity: 0.05,
-  },
-  planTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: spacing[5],
-  },
+  popularBannerText: { fontFamily: typography.family.bold, fontSize: 10, color: colors.background, letterSpacing: typography.tracking.widest },
+  planCard: { borderRadius: radius['2xl'], padding: spacing[6], borderWidth: 1, borderColor: colors.glassBorder, overflow: 'hidden', ...shadow.card },
+  planOrb: { position: 'absolute', width: 160, height: 160, borderRadius: 80, top: -80, right: -60, opacity: 0.05 },
+  planTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing[5] },
   planTopLeft: { gap: 4 },
-  planName: {
-    fontFamily: typography.family.extrabold,
-    fontSize: typography.size.lg,
-    letterSpacing: typography.tracking.wide,
-  },
+  planName: { fontFamily: typography.family.extrabold, fontSize: typography.size.lg, letterSpacing: typography.tracking.wide },
   planPriceRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
-  planPrice: {
-    fontFamily: typography.family.extrabold,
-    fontSize: typography.size['2xl'],
-    color: colors.white,
-    letterSpacing: typography.tracking.tight,
-  },
-  planPricePer: {
-    fontFamily: typography.family.regular,
-    fontSize: typography.size.sm,
-    color: colors.textSec,
-    marginBottom: 3,
-  },
-  planSub: {
-    fontFamily: typography.family.regular,
-    fontSize: typography.size.xs,
-    color: colors.textSec,
-    marginTop: 2,
-  },
-  currentBadge: {
-    borderRadius: radius.full,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1],
-    borderWidth: 1,
-  },
-  currentBadgeText: {
-    fontFamily: typography.family.bold,
-    fontSize: typography.size.xs,
-    letterSpacing: typography.tracking.wide,
-  },
+  planPrice: { fontFamily: typography.family.extrabold, fontSize: typography.size['2xl'], color: colors.white, letterSpacing: typography.tracking.tight },
+  planPricePer: { fontFamily: typography.family.regular, fontSize: typography.size.sm, color: colors.textSec, marginBottom: 3 },
+  planSub: { fontFamily: typography.family.regular, fontSize: typography.size.xs, color: colors.textSec, marginTop: 2 },
+  currentBadge: { borderRadius: radius.full, paddingHorizontal: spacing[3], paddingVertical: spacing[1], borderWidth: 1 },
+  currentBadgeText: { fontFamily: typography.family.bold, fontSize: typography.size.xs, letterSpacing: typography.tracking.wide },
   planDivider: { height: 1, marginBottom: spacing[5] },
   featureList: { gap: spacing[3] },
   featureRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing[3] },
   featureCheck: { fontFamily: typography.family.extrabold, fontSize: typography.size.base, width: 18, lineHeight: 22 },
   featureText: { flex: 1, fontFamily: typography.family.regular, fontSize: typography.size.sm, color: colors.textSec, lineHeight: 22 },
-  freeNote: {
-    marginTop: spacing[4],
-    backgroundColor: colors.glass,
-    borderRadius: radius.md,
-    padding: spacing[3],
-  },
-  freeNoteText: {
-    fontFamily: typography.family.regular,
-    fontSize: typography.size.xs,
-    color: colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  footerNote: {
-    fontFamily: typography.family.regular,
-    fontSize: typography.size.xs,
-    color: colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
+  freeNote: { marginTop: spacing[4], backgroundColor: colors.glass, borderRadius: radius.md, padding: spacing[3] },
+  freeNoteText: { fontFamily: typography.family.regular, fontSize: typography.size.xs, color: colors.textMuted, textAlign: 'center', lineHeight: 18 },
+  footerNote: { fontFamily: typography.family.regular, fontSize: typography.size.xs, color: colors.textMuted, textAlign: 'center', lineHeight: 18 },
 });

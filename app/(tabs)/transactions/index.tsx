@@ -7,7 +7,6 @@ import {
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { transactionsApi } from '../../../src/lib/api/index';
-import { useAuthStore } from '../../../src/store/auth';
 import { colors } from '../../../src/theme/colors';
 import { typography, spacing, radius, shadow } from '../../../src/theme/index';
 import { ScreenHeader, EmptyState, Skeleton } from '../../../src/components/layout/index';
@@ -15,7 +14,6 @@ import {
   SYSTEM_CATEGORIES, currentMonthYear, formatMonthYear,
   formatNaira, formatTxDate, getCategoryById,
 } from '../../../src/utils/index';
-import { DEMO_TRANSACTIONS, DEMO_TRANSACTION_SUMMARY } from '../../../src/lib/demo';
 import { BOTTOM_TAB_PADDING } from '../_layout';
 import type { Transaction } from '../../../src/types/models';
 
@@ -34,17 +32,13 @@ export default function TransactionsScreen() {
   const [activeType, setActiveType]         = useState<'DEBIT' | 'CREDIT' | undefined>(undefined);
   const [searchQuery, setSearchQuery]       = useState('');
 
-  const isDemoMode = useAuthStore(s => s.isDemoMode);
-
   // ── Summary ───────────────────────────────────────────────────────────────
   const { data: summaryData } = useQuery({
-    queryKey: ['transactions', 'summary', month, year, isDemoMode],
-    queryFn: isDemoMode
-      ? () => Promise.resolve(DEMO_TRANSACTION_SUMMARY)
-      : () => transactionsApi.summary({
-          startDate: `${year}-${String(month).padStart(2, '0')}-01`,
-          endDate:   `${year}-${String(month).padStart(2, '0')}-31`,
-        }).then(r => r.data.data),
+    queryKey: ['transactions', 'summary', month, year],
+    queryFn: () => transactionsApi.summary({
+        startDate: `${year}-${String(month).padStart(2, '0')}-01`,
+        endDate:   `${year}-${String(month).padStart(2, '0')}-31`,
+      }).then(r => r.data.data),
     staleTime: 2 * 60 * 1000,
   });
 
@@ -57,19 +51,14 @@ export default function TransactionsScreen() {
     data, fetchNextPage, hasNextPage, isFetchingNextPage,
     isLoading, refetch, isRefetching, isError,
   } = useInfiniteQuery({
-    queryKey: ['transactions', 'list', activeCategory, activeType, month, year, isDemoMode],
-    queryFn: isDemoMode
-      ? () => Promise.resolve({
-          data: DEMO_TRANSACTIONS,
-          meta: { page: 1, limit: 25, total: DEMO_TRANSACTIONS.length, totalPages: 1 },
-        })
-      : ({ pageParam = 1 }) =>
-          transactionsApi.list({
-            page: pageParam as number, limit: PAGE_SIZE,
-            categoryId: activeCategory, type: activeType,
-            startDate: `${year}-${String(month).padStart(2, '0')}-01`,
-            endDate:   `${year}-${String(month).padStart(2, '0')}-31`,
-          }).then(r => r.data),
+    queryKey: ['transactions', 'list', activeCategory, activeType, month, year],
+    queryFn: ({ pageParam = 1 }) =>
+      transactionsApi.list({
+        page: pageParam as number, limit: PAGE_SIZE,
+        categoryId: activeCategory, type: activeType,
+        startDate: `${year}-${String(month).padStart(2, '0')}-01`,
+        endDate:   `${year}-${String(month).padStart(2, '0')}-31`,
+      }).then(r => r.data),
     initialPageParam: 1,
     getNextPageParam: last =>
       last.meta.page < last.meta.totalPages ? last.meta.page + 1 : undefined,

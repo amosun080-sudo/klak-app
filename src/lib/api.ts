@@ -1,9 +1,11 @@
-import axios, { AxiosRequestConfig } from 'axios';
+import axios, { AxiosRequestConfig, AxiosError } from 'axios';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { useAuthStore } from '../store/auth';
+import { errorReporter } from './errorReporter';
+import { env } from './env';
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://10.0.2.2:3000';
+const BASE_URL = env.apiBaseUrl;
 
 export const api = axios.create({
   baseURL: `${BASE_URL}/api/v1`,
@@ -43,11 +45,14 @@ export function getApiError(err: unknown): string {
     if (typeof msg === 'string') return msg;
     if (err.response?.data?.error) return err.response.data.error;
     if (err.code === 'ECONNABORTED') {
-      return 'Could not reach the server. If testing on a physical device, make sure EXPO_PUBLIC_API_BASE_URL in .env.local points to your PC\'s local IP (e.g. http://192.168.x.x:3000) — not 10.0.2.2 which only works in the Android emulator.';
+      return 'Request timed out. Please check your connection.';
     }
     if (!err.response) {
-      return 'Could not connect to the server. Check that your backend is running and that EXPO_PUBLIC_API_BASE_URL is set to your PC\'s local IP address.';
+      return 'Could not connect to the server. Check your API URL in .env.local.';
     }
+    if (err.response.status === 401) return 'Session expired. Please log in again.';
+    if (err.response.status === 403) return 'You do not have permission to do that.';
+    if (err.response.status >= 500) return 'Server error. Please try again shortly.';
   }
   if (err instanceof Error) return err.message;
   return 'Something went wrong. Please try again.';
@@ -56,73 +61,70 @@ export function getApiError(err: unknown): string {
 // ── Attach JWT on every request ───────────────────────────────────────────────
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken;
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token && token !== 'demo-access-token') {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
-// ── Auto-refresh on 401 ───────────────────────────────────────────────────────
-let isRefreshing = false;
-let failQueue: Array<{ resolve: (t: string) => void; reject: (e: unknown) => void }> = [];
-
-function processQueue(error: unknown, token: string | null = null) {
-  failQueue.forEach((p) => (error ? p.reject(error) : p.resolve(token!)));
-  failQueue = [];
-}
+// ── Auto-refresh on 401 — race-condition-safe ─────────────────────────────────
+// FIX Issue #1: Use a single pending Promise instead of a mutable array queue.
+// All concurrent 401s await the same refresh promise — no duplicate refreshes.
+let pendingRefresh: Promise<string> | null = null;
 
 interface RetryableConfig extends AxiosRequestConfig {
   _retry?: boolean;
 }
 
+async function refreshAccessToken(): Promise<string> {
+  const refreshToken = await getRefreshToken();
+  if (!refreshToken) throw new Error('No refresh token');
+
+  const { data } = await axios.post(
+    `${BASE_URL}/api/v1/auth/refresh`,
+    { refreshToken },
+    { timeout: 10_000 },
+  );
+
+  const newAccess: string  = data.data.accessToken;
+  const newRefresh: string = data.data.refreshToken;
+
+  useAuthStore.getState().setAccessToken(newAccess);
+  await setRefreshToken(newRefresh);
+  return newAccess;
+}
+
 api.interceptors.response.use(
   (res) => res,
-  async (error) => {
-    const original: RetryableConfig = error.config ?? {};
+  async (error: AxiosError) => {
+    const original: RetryableConfig = (error.config as RetryableConfig) ?? {};
 
-    // Only attempt refresh on 401 and only once per request
+    // Report API errors to telemetry
+    const endpoint = error.config?.url ?? 'unknown';
+    if (error.response?.status && error.response.status >= 500) {
+      errorReporter.captureApiError(error, endpoint);
+    }
+
+    // Only attempt refresh on 401, and only once per request
     if (error.response?.status === 401 && !original._retry) {
-      if (isRefreshing) {
-        // Queue the request until the ongoing refresh resolves
-        return new Promise<string>((resolve, reject) => {
-          failQueue.push({ resolve, reject });
-        }).then((token) => {
-          original.headers = original.headers ?? {};
-          original.headers.Authorization = `Bearer ${token}`;
-          return api(original);
-        });
-      }
-
       original._retry = true;
-      isRefreshing = true;
 
       try {
-        const refreshToken = await getRefreshToken();
-        if (!refreshToken) throw new Error('No refresh token');
+        // Ensure only ONE refresh happens at a time — all queued requests await the same promise
+        if (!pendingRefresh) {
+          pendingRefresh = refreshAccessToken().finally(() => {
+            pendingRefresh = null;
+          });
+        }
 
-        // Use a plain axios call (not the intercepted instance) to avoid loops
-        const { data } = await axios.post(
-          `${BASE_URL}/api/v1/auth/refresh`,
-          { refreshToken },
-          { timeout: 10_000 },
-        );
-
-        const newAccess: string = data.data.accessToken;
-        const newRefresh: string = data.data.refreshToken;
-
-        useAuthStore.getState().setAccessToken(newAccess);
-        await setRefreshToken(newRefresh);
-
-        processQueue(null, newAccess);
-
+        const newToken = await pendingRefresh;
         original.headers = original.headers ?? {};
-        original.headers.Authorization = `Bearer ${newAccess}`;
+        original.headers.Authorization = `Bearer ${newToken}`;
         return api(original);
-      } catch (err) {
-        processQueue(err, null);
+      } catch (refreshError) {
         await clearRefreshToken();
         useAuthStore.getState().logout();
-        return Promise.reject(err);
-      } finally {
-        isRefreshing = false;
+        return Promise.reject(refreshError);
       }
     }
 

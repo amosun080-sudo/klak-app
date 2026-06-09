@@ -64,15 +64,11 @@ function InsightCard({ insight }: { insight: Insight }) {
 }
 
 export default function InsightsScreen() {
-  const user       = useAuthStore(s => s.user);
-  const isDemoMode = useAuthStore(s => s.isDemoMode);
-  const qc         = useQueryClient();
-  const hasPro     = planMeetsRequirement(user?.plan ?? 'FREE', 'PRO');
+  const user   = useAuthStore(s => s.user);
+  const qc     = useQueryClient();
+  const hasPro = planMeetsRequirement(user?.plan ?? 'FREE', 'PRO');
 
-  // In demo mode always show insights, otherwise gate on PRO plan
-  const queryEnabled = hasPro || isDemoMode;
-
-  const { data, isLoading, refetch, isRefetching, isError } = useInsights(queryEnabled);
+  const { data, isLoading, refetch, isRefetching, isError } = useInsights(hasPro);
 
   const { mutate: generate, isPending: generating } = useMutation({
     mutationFn: insightsApi.generate,
@@ -80,7 +76,7 @@ export default function InsightsScreen() {
     onError:    (err) => Alert.alert('Failed', getApiError(err)),
   });
 
-  if (!hasPro && !isDemoMode) {
+  if (!hasPro) {
     return (
       <SafeAreaView style={styles.safe}>
         <ScreenHeader label="AI powered" title="Insights" />

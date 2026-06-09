@@ -11,18 +11,24 @@ import {
 import { useAuthStore } from '../src/store/auth';
 import { authApi, usersApi } from '../src/lib/api/index';
 import { getRefreshToken, setRefreshToken, clearRefreshToken } from '../src/lib/api';
+import { shouldRetry, getRetryDelay } from '../src/lib/retryStrategy';
+import { ErrorBoundary } from '../src/components/feedback/ErrorBoundary';
 import { colors } from '../src/theme/colors';
 import { typography, spacing, radius } from '../src/theme/index';
 
-// ── Query Client ──────────────────────────────────────────────────────────────
+// ── Query Client with smart retry strategy (Issue #5) ─────────────────────────
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
-      retryDelay: 1000,
-      staleTime: 60_000,
+      retry:        (attempt, error) => shouldRetry(error, attempt),
+      retryDelay:   (attempt) => getRetryDelay(attempt),
+      staleTime:    60_000,
+      networkMode:  'always',
     },
-    mutations: { retry: 0 },
+    mutations: {
+      retry:       0,
+      networkMode: 'always',
+    },
   },
 });
 
@@ -33,14 +39,12 @@ export default function RootLayout() {
   const setLoading = useAuthStore(s => s.setLoading);
   const isLoading  = useAuthStore(s => s.isLoading);
 
-  // Only load the three weights that actually exist in the package
   const [fontsLoaded, fontError] = useFonts({
     DMSans_400Regular,
     DMSans_500Medium,
     DMSans_700Bold,
   });
 
-  // If fonts fail to load, don't hang the app — render without custom fonts
   const fontsReady = fontsLoaded || !!fontError;
 
   // ── Session restore with hard timeout ─────────────────────────────────────
@@ -88,7 +92,6 @@ export default function RootLayout() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Splash pulse ───────────────────────────────────────────────────────────
   const pulseAnim = useRef(new Animated.Value(0.5)).current;
   useEffect(() => {
     Animated.loop(
@@ -103,18 +106,21 @@ export default function RootLayout() {
   const showSplash = !fontsReady || isLoading;
 
   return (
-    <QueryClientProvider client={queryClient}>
-      {showSplash ? (
-        <View style={styles.splash}>
-          <Animated.View style={[styles.logoMark, { opacity: pulseAnim }]}>
-            <Text style={styles.logoText}>K</Text>
-          </Animated.View>
-          <Text style={styles.splashSub}>Your money. Clear as Klak.</Text>
-        </View>
-      ) : (
-        <Slot />
-      )}
-    </QueryClientProvider>
+    // Issue #4 — Error Boundary wraps entire app
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        {showSplash ? (
+          <View style={styles.splash}>
+            <Animated.View style={[styles.logoMark, { opacity: pulseAnim }]}>
+              <Text style={styles.logoText}>K</Text>
+            </Animated.View>
+            <Text style={styles.splashSub}>Your money. Clear as Klak.</Text>
+          </View>
+        ) : (
+          <Slot />
+        )}
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 
@@ -137,7 +143,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   logoText: {
-    // Use system font fallback — custom fonts may not be loaded yet at splash time
     fontSize: 52,
     color: colors.klakGreen,
     fontWeight: '800',

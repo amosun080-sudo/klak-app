@@ -4,9 +4,7 @@ import {
   TouchableOpacity, SafeAreaView, Pressable,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { accountsApi, transactionsApi } from '../../src/lib/api/index';
 import { useAuthStore } from '../../src/store/auth';
 import { useBalance, useRecentTransactions } from '../../src/lib/useDemoQuery';
 import { BOTTOM_TAB_PADDING } from './_layout';
