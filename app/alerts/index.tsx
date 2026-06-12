@@ -16,7 +16,7 @@ import type { Alert as KlakAlert } from '../../src/types/models';
 export default function AlertsScreen() {
   const { data: alerts, isLoading, refetch, isRefetching, isError } = useQuery({
     queryKey: ['alerts', 'history'],
-    queryFn: () => alertsApi.history().then(r => r.data.data),
+    queryFn: () => alertsApi.history().then(r => r.data),
     staleTime: 60 * 1000,
   });
 

@@ -117,7 +117,6 @@ export default function LinkAccountScreen() {
   const qc = useQueryClient();
   const [step, setStep] = useState<'intro' | 'provider' | 'mono' | 'plaid' | 'success'>('intro');
   const [linkedName, setLinkedName] = useState('');
-  const [provider, setProvider] = useState<'mono' | 'plaid' | null>(null);
 
   // ── Plaid Link Token query ───────────────────────────────────────────────
   const { data: plaidData, refetch: refetchPlaidToken } = useQuery({

@@ -116,7 +116,7 @@ export default function AccountsScreen() {
         qc.invalidateQueries({ queryKey: ['transactions'] });
       }
       
-      const newTxCount = (data.data as any)?.newTransactions ?? 0;
+      const newTxCount = (data as any)?.newTransactions ?? 0;
       Alert.alert(
         'Sync Complete',
         newTxCount > 0 

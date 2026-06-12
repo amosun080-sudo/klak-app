@@ -33,7 +33,7 @@ export default function ExportScreen() {
 
   // ── Generate mutations ────────────────────────────────────────────────────
   const { mutate: genPDF, isPending: pdfPending } = useMutation({
-    mutationFn: () => exportsApi.request({ format: 'PDF', dateFrom: startDate, dateTo: endDate }).then(r => r.data.data),
+    mutationFn: () => exportsApi.request({ format: 'PDF', dateFrom: startDate, dateTo: endDate }).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['exports', 'history'] });
       Alert.alert('Export Requested', 'Your PDF export is being generated. It will appear in Past Exports below shortly.');
@@ -42,7 +42,7 @@ export default function ExportScreen() {
   });
 
   const { mutate: genExcel, isPending: excelPending } = useMutation({
-    mutationFn: () => exportsApi.request({ format: 'EXCEL', dateFrom: startDate, dateTo: endDate }).then(r => r.data.data),
+    mutationFn: () => exportsApi.request({ format: 'EXCEL', dateFrom: startDate, dateTo: endDate }).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['exports', 'history'] });
       Alert.alert('Export Requested', 'Your Excel export is being generated. It will appear in Past Exports below shortly.');

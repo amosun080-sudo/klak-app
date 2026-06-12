@@ -16,7 +16,7 @@ export default function AlertSettingsScreen() {
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['alerts', 'settings'],
-    queryFn: () => alertsApi.settings().then(r => r.data.data),
+    queryFn: () => alertsApi.settings().then(r => r.data),
   });
 
   const { mutate: update } = useMutation({
