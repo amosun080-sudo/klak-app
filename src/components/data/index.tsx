@@ -116,10 +116,10 @@ export function TransactionItem({ transaction, onPress, showDivider = true }: Tr
     color: colors.textSec,
     isSystem: true,
   };
-  const isDebit = transaction.amount < 0;
+  const isDebit = (transaction.amount ?? 0) < 0;
   const amountDisplay = isDebit
-    ? `- ${formatNairaFull(Math.abs(transaction.amount))}`
-    : `+ ${formatNairaFull(transaction.amount)}`;
+    ? `- ${formatNairaFull(Math.abs(transaction.amount ?? 0))}`
+    : `+ ${formatNairaFull(transaction.amount ?? 0)}`;
 
   return (
     <>
@@ -211,7 +211,11 @@ export function InsightCard({ insight }: InsightCardProps) {
     warning: { bg: colors.insightWarningBg, border: colors.insightWarningBorder, title: colors.insightWarningTitle },
     info:    { bg: colors.insightInfoBg,    border: colors.insightInfoBorder,    title: colors.insightInfoTitle },
     success: { bg: colors.insightSuccessBg, border: colors.insightSuccessBorder, title: colors.insightSuccessTitle },
-  }[insight.severity];
+  }[insight.severity] || {
+    bg: colors.insightInfoBg, 
+    border: colors.insightInfoBorder, 
+    title: colors.insightInfoTitle 
+  };
 
   return (
     <View style={[styles.insightCard, { backgroundColor: cfg.bg, borderLeftColor: cfg.border }]}>

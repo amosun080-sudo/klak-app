@@ -6,6 +6,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { budgetsApi, getApiError } from '../../../src/lib/api/index';
+import { validation, validateFields, isFormValid } from '../../../src/lib/validation';
 import { colors } from '../../../src/theme/colors';
 import { typography, spacing, radius } from '../../../src/theme/index';
 import { CurrencyInput } from '../../../src/components/forms/index';
@@ -24,7 +25,7 @@ export default function CreateBudgetScreen() {
 
   const [selectedCat, setSelectedCat] = useState<string>('');
   const [limitCents, setLimitCents]   = useState(0);
-  const [error, setError]             = useState('');
+  const [errors, setErrors]             = useState<Record<string, string>>({});
 
   useQuery({
     queryKey: ['budget', id],
@@ -37,15 +38,20 @@ export default function CreateBudgetScreen() {
   });
 
   const { mutate: create, isPending: creating } = useMutation({
-    mutationFn: () => budgetsApi.create({ categoryId: selectedCat, limitCents, month, year }),
+    mutationFn: () => budgetsApi.create({ 
+      categoryId: selectedCat, 
+      limitNaira: limitCents / 100, // Convert kobo to naira
+      month, 
+      year 
+    }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['budgets'] }); router.back(); },
-    onError: (err) => setError(getApiError(err)),
+    onError: (err) => setErrors({ form: getApiError(err) }),
   });
 
   const { mutate: update, isPending: updating } = useMutation({
-    mutationFn: () => budgetsApi.update(id!, { limitCents }),
+    mutationFn: () => budgetsApi.update(id!, { limitNaira: limitCents / 100 }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['budgets'] }); router.back(); },
-    onError: (err) => setError(getApiError(err)),
+    onError: (err) => setErrors({ form: getApiError(err) }),
   });
 
   const { mutate: del, isPending: deleting } = useMutation({
@@ -60,10 +66,22 @@ export default function CreateBudgetScreen() {
       { text: 'Delete', style: 'destructive', onPress: () => del() },
     ]);
 
+  const validateForm = () => {
+    const validationResults = validateFields(
+      { selectedCat, limitCents: limitCents / 100 }, // Convert to naira for validation
+      {
+        selectedCat: (value) => !value ? 'Please choose a category' : true,
+        limitCents: validation.budgetLimit,
+      }
+    );
+    
+    setErrors(validationResults);
+    return isFormValid(validationResults);
+  };
+
   const handleSubmit = () => {
-    if (!selectedCat) { setError('Choose a category'); return; }
-    if (limitCents <= 0) { setError('Enter a spending limit'); return; }
-    setError('');
+    if (!validateForm()) return;
+    setErrors({});
     isEdit ? update() : create();
   };
 
@@ -97,10 +115,14 @@ export default function CreateBudgetScreen() {
                   return (
                     <TouchableOpacity
                       key={cat.id}
-                      onPress={() => { setSelectedCat(cat.id); setError(''); }}
+                      onPress={() => { 
+                        setSelectedCat(cat.id); 
+                        setErrors(prev => ({ ...prev, selectedCat: '' }));
+                      }}
                       style={[
                         styles.catItem,
                         active && { borderColor: cat.color, backgroundColor: cat.color + '18' },
+                        errors.selectedCat && !active ? { borderColor: colors.alertRed } : null
                       ]}
                       activeOpacity={0.75}
                     >
@@ -117,6 +139,9 @@ export default function CreateBudgetScreen() {
                   );
                 })}
               </View>
+              {errors.selectedCat && (
+                <Text style={styles.fieldError}>⚠ {errors.selectedCat}</Text>
+              )}
             </>
           )}
 
@@ -125,9 +150,12 @@ export default function CreateBudgetScreen() {
             <CurrencyInput
               label="Monthly spending limit"
               valueCents={limitCents}
-              onChange={setLimitCents}
+              onChange={(cents) => {
+                setLimitCents(cents);
+                setErrors(prev => ({ ...prev, limitCents: '' }));
+              }}
               placeholder="20,000"
-              error={undefined}
+              error={errors.limitCents}
             />
           </View>
 
@@ -139,9 +167,9 @@ export default function CreateBudgetScreen() {
           </View>
 
           {/* Error */}
-          {!!error && (
+          {!!errors.form && (
             <View style={styles.errorBox}>
-              <Text style={styles.errorText}>⚠ {error}</Text>
+              <Text style={styles.errorText}>⚠ {errors.form}</Text>
             </View>
           )}
 
@@ -249,6 +277,15 @@ const styles = StyleSheet.create({
     color: colors.background,
     fontFamily: typography.family.bold,
     lineHeight: 14,
+  },
+
+  // Field error
+  fieldError: {
+    fontFamily: typography.family.semibold,
+    fontSize: typography.size.xs,
+    color: colors.alertRed,
+    marginTop: spacing[2],
+    marginLeft: spacing[1],
   },
 
   // Input

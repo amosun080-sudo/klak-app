@@ -89,8 +89,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         );
       });
 
-      // Store subscription for cleanup (could be added to state if needed)
-      return () => subscription.remove();
+      // No need to return the cleanup function, just handle it internally
     } catch (err) {
       console.error('FCM: Initialization failed:', err);
     }

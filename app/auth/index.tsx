@@ -13,6 +13,7 @@ import { authApi, getApiError } from '../../src/lib/api/index';
 import { setRefreshToken } from '../../src/lib/api';
 import { useAuthStore } from '../../src/store/auth';
 import { normalizePhone, isValidNigerianPhone } from '../../src/utils/index';
+import { validation, validateFields, isFormValid } from '../../src/lib/validation';
 
 // ── Password strength ─────────────────────────────────────────────────────────
 function PasswordStrength({ password }: { password: string }) {
@@ -52,6 +53,8 @@ const ps = StyleSheet.create({
 
 // ── Register ──────────────────────────────────────────────────────────────────
 function RegisterScreen({ onLogin, onOTP }: { onLogin: () => void; onOTP: (phone: string) => void }) {
+  const { login } = useAuthStore();
+  const router = useRouter();
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -62,14 +65,20 @@ function RegisterScreen({ onLogin, onOTP }: { onLogin: () => void; onOTP: (phone
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validate = () => {
-    const e: Record<string, string> = {};
-    if (!fullName.trim()) e.fullName = 'Enter your full name';
-    if (!isValidNigerianPhone(normalizePhone(phone))) e.phone = 'Enter a valid Nigerian number';
-    if (password.length < 8) e.password = 'At least 8 characters required';
-    if (confirm !== password) e.confirm = 'Passwords do not match';
-    if (!agreed) e.terms = 'Accept terms to continue';
-    setErrors(e);
-    return Object.keys(e).length === 0;
+    // Use the new validation system
+    const validationResults = validateFields(
+      { fullName, phone: normalizePhone(phone), password, confirm, agreed },
+      {
+        fullName: validation.fullName,
+        phone: validation.phone,
+        password: validation.password,
+        confirm: (value) => value !== password ? 'Passwords do not match' : true,
+        agreed: (value) => !value ? 'Accept terms to continue' : true,
+      }
+    );
+    
+    setErrors(validationResults);
+    return isFormValid(validationResults);
   };
 
   const submit = async () => {
@@ -152,14 +161,27 @@ function LoginScreen({ onRegister, onOTP }: { onRegister: () => void; onOTP: (ph
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validate = () => {
+    const validationResults = validateFields(
+      { phone: normalizePhone(phone), password },
+      {
+        phone: validation.phone,
+        password: validation.required,
+      }
+    );
+    
+    setErrors(validationResults);
+    return isFormValid(validationResults);
+  };
 
   const submit = async () => {
-    if (!phone.trim() || !password) { setError('Enter your phone and password.'); return; }
-    const normalized = normalizePhone(phone);
-    if (!isValidNigerianPhone(normalized)) { setError('Enter a valid Nigerian phone number.'); return; }
-    setLoading(true); setError('');
+    if (!validate()) return;
+    setLoading(true);
+    
     try {
+      const normalized = normalizePhone(phone);
       // Backend returns { user, accessToken, refreshToken } directly
       const { data } = await authApi.login({ phone: normalized, password });
       const tokens = { accessToken: data.accessToken, refreshToken: data.refreshToken };
@@ -167,7 +189,7 @@ function LoginScreen({ onRegister, onOTP }: { onRegister: () => void; onOTP: (ph
       login(tokens, data.user);
       router.replace('/(tabs)/home');
     } catch (err) {
-      setError(getApiError(err));
+      setErrors({ form: getApiError(err) });
     } finally {
       setLoading(false);
     }
@@ -175,12 +197,18 @@ function LoginScreen({ onRegister, onOTP }: { onRegister: () => void; onOTP: (ph
 
   const sendOTPLogin = async () => {
     const normalized = normalizePhone(phone);
-    if (!isValidNigerianPhone(normalized)) { setError('Enter a valid phone number first.'); return; }
+    const phoneValidation = validation.phone(normalized);
+    
+    if (phoneValidation !== true) {
+      setErrors({ phone: phoneValidation as string });
+      return;
+    }
+    
     try {
       await authApi.sendOTP(normalized);
       onOTP(normalized);
     } catch (err) {
-      setError(getApiError(err));
+      setErrors({ form: getApiError(err) });
     }
   };
 
@@ -190,16 +218,17 @@ function LoginScreen({ onRegister, onOTP }: { onRegister: () => void; onOTP: (ph
         <Text style={styles.formTitle}>Welcome back</Text>
         <Text style={styles.formSub}>Access your financial overview.</Text>
 
-        {error ? <View style={styles.formError}><Text style={styles.formErrorText}>⚠ {error}</Text></View> : null}
+        {errors.form ? <View style={styles.formError}><Text style={styles.formErrorText}>⚠ {errors.form}</Text></View> : null}
 
         <View style={styles.fieldGroup}>
           <LabelledInput label="Phone (+234)" value={phone} onChangeText={setPhone}
-            placeholder="08012345678" keyboardType="phone-pad" autoCapitalize="none" />
+            placeholder="08012345678" keyboardType="phone-pad" autoCapitalize="none" error={errors.phone} />
         </View>
         <View style={styles.fieldGroup}>
           <LabelledInput
             label="Password" value={password} onChangeText={setPassword}
             placeholder="Enter password" secureTextEntry={!showPass} autoCapitalize="none"
+            error={errors.password}
             rightIcon={
               <TouchableOpacity onPress={() => setShowPass(p => !p)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={styles.eyeToggle}>{showPass ? '●' : '○'}</Text>
@@ -238,7 +267,7 @@ function OTPScreen({ phone, onBack }: { phone: string; onBack: () => void }) {
   const router = useRouter();
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [timer, setTimer] = useState(60);
 
   useEffect(() => {
@@ -248,13 +277,20 @@ function OTPScreen({ phone, onBack }: { phone: string; onBack: () => void }) {
   }, [timer]);
 
   const verify = async () => {
-    if (otp.length < 6) { setError('Enter the 6-digit code'); return; }
-    setLoading(true); setError('');
+    const otpValidation = validation.otp(otp);
+    if (otpValidation !== true) {
+      setErrors({ otp: otpValidation as string });
+      return;
+    }
+    
+    setLoading(true);
+    setErrors({});
+    
     try {
       // OTP verify only confirms phone — returns { verified, message }
       const { data } = await authApi.verifyOTP({ phone, code: otp });
       if (!data.verified) {
-        setError('Invalid or expired code. Please try again.');
+        setErrors({ otp: 'Invalid or expired code. Please try again.' });
         return;
       }
       // After OTP verify, log the user in via password login
@@ -262,7 +298,7 @@ function OTPScreen({ phone, onBack }: { phone: string; onBack: () => void }) {
       // For now navigate back to login with success message
       onBack();
     } catch (err) {
-      setError(getApiError(err));
+      setErrors({ otp: getApiError(err) });
     } finally {
       setLoading(false);
     }
@@ -270,8 +306,13 @@ function OTPScreen({ phone, onBack }: { phone: string; onBack: () => void }) {
 
   const resend = async () => {
     if (timer > 0) return;
-    try { await authApi.sendOTP(phone); setTimer(60); }
-    catch (err) { setError(getApiError(err)); }
+    try { 
+      await authApi.sendOTP(phone); 
+      setTimer(60);
+      setErrors({});
+    } catch (err) { 
+      setErrors({ form: getApiError(err) }); 
+    }
   };
 
   const masked = phone.replace(/(\+234)(\d{3})(\d{4})(\d{3})/, '$1 $2****$4');
@@ -291,9 +332,14 @@ function OTPScreen({ phone, onBack }: { phone: string; onBack: () => void }) {
           Code sent to <Text style={{ color: colors.klakGreen }}>{masked}</Text>
         </Text>
 
-        <OTPInput value={otp} onChange={setOtp} error={error} />
+        <OTPInput value={otp} onChange={setOtp} error={errors.otp} />
 
-        {error ? <Text style={[styles.fieldError, { marginTop: spacing[3] }]}>⚠ {error}</Text> : null}
+        {errors.otp ? <Text style={[styles.fieldError, { marginTop: spacing[3] }]}>⚠ {errors.otp}</Text> : null}
+        {errors.form ? (
+          <View style={[styles.formError, { marginTop: spacing[3] }]}>
+            <Text style={styles.formErrorText}>⚠ {errors.form}</Text>
+          </View>
+        ) : null}
 
         <Button
           label={loading ? 'Verifying…' : 'Verify'}

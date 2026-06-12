@@ -250,14 +250,14 @@ export const budgetsApi = {
   create: (dto: CreateBudgetDto) =>
     api.post<any>('/budgets', {
       categoryId: dto.categoryId,
-      limitNaira: dto.limitCents ? dto.limitCents / 100 : (dto as any).limitNaira,
+      limitNaira: dto.limitNaira,
       month:      dto.month,
       year:       dto.year,
     }),
 
   update: (id: string, dto: Partial<CreateBudgetDto>) =>
     api.patch<any>(`/budgets/${id}`, {
-      limitNaira: dto.limitCents ? dto.limitCents / 100 : (dto as any).limitNaira,
+      limitNaira: dto.limitNaira,
     }),
 
   delete: (id: string) =>

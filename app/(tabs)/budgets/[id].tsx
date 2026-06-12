@@ -37,7 +37,7 @@ export default function BudgetDetailScreen() {
 
   // ── Update mutation ───────────────────────────────────────────────────────
   const { mutate: update, isPending: updating } = useMutation({
-    mutationFn: () => budgetsApi.update(id, { limitCents }),
+    mutationFn: () => budgetsApi.update(id, { limitNaira: limitCents / 100 }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['budgets'] });
       qc.invalidateQueries({ queryKey: ['budget', id] });

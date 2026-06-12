@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { subMonths, format, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 import { exportsApi, getApiError } from '../src/lib/api/index';
+import { validation } from '../src/lib/validation';
 import { useAuthStore } from '../src/store/auth';
 import { colors } from '../src/theme/colors';
 import { typography, spacing, radius } from '../src/theme/index';
@@ -23,6 +24,12 @@ export default function ExportScreen() {
   const [startDate, setStartDate] = useState(format(startOfMonth(now), 'yyyy-MM-dd'));
   const [endDate,   setEndDate]   = useState(format(endOfMonth(now), 'yyyy-MM-dd'));
 
+  // Validate date range
+  const validateDateRange = () => {
+    const dateValidation = validation.dateRange(startDate, endDate);
+    return dateValidation === true;
+  };
+
   // ── Past exports ─────────────────────────────────────────────────────────
   const { data: history, isLoading: historyLoading, isError: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ['exports', 'history'],
@@ -33,7 +40,12 @@ export default function ExportScreen() {
 
   // ── Generate mutations ────────────────────────────────────────────────────
   const { mutate: genPDF, isPending: pdfPending } = useMutation({
-    mutationFn: () => exportsApi.request({ format: 'PDF', dateFrom: startDate, dateTo: endDate }).then(r => r.data),
+    mutationFn: () => {
+      if (!validateDateRange()) {
+        throw new Error('Invalid date range selected');
+      }
+      return exportsApi.request({ format: 'PDF', dateFrom: startDate, dateTo: endDate }).then(r => r.data);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['exports', 'history'] });
       Alert.alert('Export Requested', 'Your PDF export is being generated. It will appear in Past Exports below shortly.');
@@ -42,7 +54,12 @@ export default function ExportScreen() {
   });
 
   const { mutate: genExcel, isPending: excelPending } = useMutation({
-    mutationFn: () => exportsApi.request({ format: 'EXCEL', dateFrom: startDate, dateTo: endDate }).then(r => r.data),
+    mutationFn: () => {
+      if (!validateDateRange()) {
+        throw new Error('Invalid date range selected');
+      }
+      return exportsApi.request({ format: 'EXCEL', dateFrom: startDate, dateTo: endDate }).then(r => r.data);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['exports', 'history'] });
       Alert.alert('Export Requested', 'Your Excel export is being generated. It will appear in Past Exports below shortly.');
@@ -164,8 +181,9 @@ export default function ExportScreen() {
               <View key={exp.id}>
                 <TouchableOpacity
                   style={styles.historyRow}
-                  onPress={() => Linking.openURL(exp.url)}
+                  onPress={() => exp.url ? Linking.openURL(exp.url) : null}
                   activeOpacity={0.7}
+                  disabled={!exp.url}
                 >
                   <Text style={styles.formatEmoji}>{exp.type === 'PDF' ? '📄' : '📊'}</Text>
                   <View style={{ flex: 1 }}>

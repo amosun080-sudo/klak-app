@@ -165,7 +165,7 @@ export const validateFields = (fields: Record<string, any>, rules: Record<string
   Object.entries(rules).forEach(([fieldName, validator]) => {
     const value = fields[fieldName];
     const result = validator(value);
-    if (result !== true) {
+    if (result !== true && typeof result === 'string') {
       errors[fieldName] = result;
     }
   });

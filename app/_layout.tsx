@@ -132,8 +132,8 @@ export default function RootLayout() {
 
   // ── Handle notification responses ─────────────────────────────────────────
   useEffect(() => {
-    const subscription = Notifications.addNotificationResponseListener(({ notification, actionIdentifier }) => {
-      console.log('Notification tapped:', notification, actionIdentifier);
+    const subscription = Notifications.addNotificationReceivedListener((notification) => {
+      console.log('Notification received:', notification);
       
       // Handle notification navigation based on data
       const data = notification.request.content.data;

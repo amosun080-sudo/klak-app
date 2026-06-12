@@ -89,7 +89,7 @@ export const cacheManager = {
         // Clear all cache entries
         const keys = await AsyncStorage.getAllKeys();
         const cacheKeys = keys.filter(k => k.startsWith('cache:'));
-        await AsyncStorage.multiRemove(cacheKeys);
+        await Promise.all(cacheKeys.map(key => AsyncStorage.removeItem(key)));
         console.log(`Cache CLEARED: ${cacheKeys.length} entries`);
       }
     } catch (err) {
