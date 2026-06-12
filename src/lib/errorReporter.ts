@@ -1,6 +1,6 @@
 /**
- * Centralized error reporting — Issue #2 from code review.
- * Swap captureException internals for Sentry/LogRocket when ready.
+ * Centralized error reporting for production monitoring.
+ * Configure Sentry or similar service for production error tracking.
  */
 import axios, { AxiosError } from 'axios';
 
@@ -15,8 +15,12 @@ export interface ErrorContext {
 export const errorReporter = {
   captureException: (err: Error | unknown, context: ErrorContext): void => {
     const message = err instanceof Error ? err.message : String(err);
-    // TODO: Replace with Sentry.captureException(err, { extra: context })
-    if (__DEV__) {
+    
+    // TODO: Replace with production error service like Sentry
+    // Sentry.captureException(err, { extra: context })
+    
+    // For production, only log critical errors to avoid spam
+    if (context.severity === 'high' || __DEV__) {
       console.error('[ERROR]', message, {
         ...context,
         timestamp: context.timestamp ?? new Date(),
@@ -33,6 +37,7 @@ export const errorReporter = {
       metadata: {
         status: err.response?.status,
         url: err.config?.url,
+        method: err.config?.method,
       },
     });
   },

@@ -1,162 +1,278 @@
 import api from '../api';
 import type {
-  AuthTokens, User, Account, BalanceResponse,
+  AuthResponse, TokenPair, User,
+  Account, BalanceResponse,
   Transaction, TransactionListParams, TransactionSummary,
   Budget, BudgetOverview, CreateBudgetDto,
   Category,
-  Insight, AlertSettings, Alert,
-  SubscriptionPlan, Subscription, ExportRecord,
-  ApiResponse, PaginatedResponse,
+  Insight,
+  AlertSettings, Alert,
+  SubscriptionPlan, Subscription, InitiateSubscriptionDto,
+  ExportRecord,
 } from '../../types/models';
 
-// Re-export error helper so screens import from one place
 export { getApiError } from '../api';
 
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+/** Convert Naira to kobo (cents) */
+const toCents = (naira: number) => Math.round(naira * 100);
+
+/** Normalise a Budget from the backend (adds *Cents fields) */
+function normaliseBudget(b: any): Budget {
+  return {
+    ...b,
+    limitCents: toCents(b.limitNaira ?? 0),
+    spentCents: toCents(b.spentNaira ?? 0),
+    categoryId: b.categoryId ?? b.category?.id ?? '',
+  };
+}
+
+/** Normalise an Insight (adds legacy fields) */
+function normaliseInsight(i: any): Insight {
+  const priorityMap: Record<string, 'warning' | 'info' | 'success'> = {
+    HIGH:   'warning',
+    MEDIUM: 'info',
+    LOW:    'success',
+  };
+  return {
+    ...i,
+    body:         i.message,
+    severity:     priorityMap[i.priority] ?? 'info',
+    generatedAt:  i.createdAt,
+    emoji:        i.type === 'BUDGET_ALERT' ? '⚠️' : i.type === 'SPENDING_PATTERN' ? '📊' : i.type === 'SAVINGS_TIP' ? '💡' : '✨',
+  };
+}
+
+/** Normalise a Transaction (adds legacy fields) */
+function normaliseTransaction(t: any): Transaction {
+  return {
+    ...t,
+    narration:   t.description ?? t.narration ?? '',
+    amount:      t.type === 'DEBIT' ? -(t.amountCents ?? toCents(t.amountNaira ?? 0)) : (t.amountCents ?? toCents(t.amountNaira ?? 0)),
+    amountCents: t.amountCents ?? toCents(t.amountNaira ?? 0),
+    categoryId:  t.category?.id ?? t.categoryId,
+  };
+}
+
 // ── AUTH ──────────────────────────────────────────────────────────────────────
+// NOTE: The real API returns { user, accessToken, refreshToken } DIRECTLY —
+// not wrapped in a data envelope.
 export const authApi = {
-  register: (body: { phone: string; fullName: string; password: string }) =>
-    api.post<ApiResponse<{ userId: string }>>('/auth/register', body),
+  register: (body: { phone: string; fullName: string; password: string; email?: string }) =>
+    api.post<AuthResponse>('/auth/register', body),
 
   login: (body: { phone: string; password: string }) =>
-    api.post<ApiResponse<{ tokens: AuthTokens; user: User }>>('/auth/login', body),
+    api.post<AuthResponse>('/auth/login', body),
 
   sendOTP: (phone: string) =>
-    api.post<ApiResponse<void>>('/auth/otp/send', { phone }),
+    api.post<{ message: string; expiresIn: string }>('/auth/otp/send', { phone }),
 
   verifyOTP: (body: { phone: string; code: string }) =>
-    api.post<ApiResponse<{ tokens: AuthTokens; user: User }>>('/auth/otp/verify', body),
+    api.post<{ verified: boolean; message: string }>('/auth/otp/verify', body),
 
   refresh: (refreshToken: string) =>
-    api.post<ApiResponse<AuthTokens>>('/auth/refresh', { refreshToken }),
+    api.post<TokenPair>('/auth/refresh', { refreshToken }),
 
-  logout: () => api.post<ApiResponse<void>>('/auth/logout'),
+  logout: (refreshToken?: string) =>
+    api.post<{ message: string }>('/auth/logout', { refreshToken }),
 };
 
 // ── USERS ─────────────────────────────────────────────────────────────────────
 export const usersApi = {
   me: () =>
-    api.get<ApiResponse<User>>('/users/me'),
+    api.get<User>('/users/me'),
 
   updateMe: (body: Partial<Pick<User, 'fullName' | 'language'>>) =>
-    api.patch<ApiResponse<User>>('/users/me', body),
+    api.patch<User>('/users/me', body),
 
   updateFcmToken: (fcmToken: string) =>
-    api.patch<ApiResponse<void>>('/users/me/fcm-token', { fcmToken }),
+    api.patch<{ message: string }>('/users/me/fcm-token', { fcmToken }),
 
   deleteMe: () =>
-    api.delete<ApiResponse<void>>('/users/me'),
+    api.delete<{ message: string }>('/users/me'),
 };
 
 // ── ACCOUNTS ─────────────────────────────────────────────────────────────────
 export const accountsApi = {
   list: () =>
-    api.get<ApiResponse<Account[]>>('/accounts'),
+    api.get<Account[]>('/accounts'),
 
+  /** Generate a Plaid Link token to initialise the bank linking widget */
+  createLinkToken: () =>
+    api.post<{ linkToken: string }>('/accounts/plaid/link-token'),
+
+  /** Exchange Plaid public token to link a bank account */
   link: (code: string) =>
-    api.post<ApiResponse<Account>>('/accounts/link', { code }),
+    api.post<Account & { message: string }>('/accounts/link', { code }),
 
   balance: () =>
-    api.get<ApiResponse<BalanceResponse>>('/accounts/balance'),
+    api.get<BalanceResponse>('/accounts/balance'),
 
   unlink: (id: string) =>
-    api.delete<ApiResponse<void>>(`/accounts/${id}`),
+    api.delete<{ message: string }>(`/accounts/${id}`),
 
   sync: (id: string) =>
-    api.post<ApiResponse<void>>(`/accounts/${id}/sync`),
+    api.post<{ message: string; newTransactions: number }>(`/accounts/${id}/sync`),
 };
 
 // ── TRANSACTIONS ──────────────────────────────────────────────────────────────
 export const transactionsApi = {
-  list: (params?: TransactionListParams) =>
-    api.get<PaginatedResponse<Transaction>>('/transactions', { params }),
+  list: async (params?: TransactionListParams) => {
+    const res = await api.get<{
+      data: any[];
+      pagination: { page: number; limit: number; total: number };
+    }>('/transactions', { params });
+    return {
+      ...res,
+      data: {
+        data: (res.data.data ?? []).map(normaliseTransaction),
+        pagination: res.data.pagination,
+        // legacy compat
+        meta: res.data.pagination ? {
+          page:       res.data.pagination.page,
+          limit:      res.data.pagination.limit,
+          total:      res.data.pagination.total,
+          totalPages: Math.ceil(res.data.pagination.total / (res.data.pagination.limit || 25)),
+        } : undefined,
+      },
+    };
+  },
 
-  get: (id: string) =>
-    api.get<ApiResponse<Transaction>>(`/transactions/${id}`),
+  get: async (id: string) => {
+    const res = await api.get<any>(`/transactions/${id}`);
+    return { ...res, data: { data: normaliseTransaction(res.data) } };
+  },
 
   recategorise: (id: string, categoryId: string) =>
-    api.patch<ApiResponse<Transaction>>(`/transactions/${id}/category`, { categoryId }),
+    api.patch<{ id: string; category: Category; message: string }>(
+      `/transactions/${id}/category`,
+      { categoryId },
+    ),
 
-  summary: (params?: { startDate?: string; endDate?: string; accountId?: string }) =>
-    api.get<ApiResponse<TransactionSummary[]>>('/transactions/summary', { params }),
+  summary: (params?: { startDate?: string; endDate?: string; month?: number; year?: number }) =>
+    api.get<TransactionSummary>('/transactions/summary', { params }),
 };
 
 // ── BUDGETS ───────────────────────────────────────────────────────────────────
 export const budgetsApi = {
-  list: () =>
-    api.get<ApiResponse<Budget[]>>('/budgets'),
+  list: async () => {
+    const res = await api.get<any[]>('/budgets');
+    return { ...res, data: { data: (res.data ?? []).map(normaliseBudget) } };
+  },
 
-  overview: () =>
-    api.get<ApiResponse<BudgetOverview>>('/budgets/overview'),
+  overview: async () => {
+    const res = await api.get<any>('/budgets/overview');
+    const d = res.data;
+    // Attach normalised budget list for screens that expect overview.budgets
+    const overview: BudgetOverview = {
+      ...d,
+      overallLimitCents: toCents(d.totalBudget ?? 0),
+      overallSpentCents: toCents(d.totalSpent  ?? 0),
+      budgets: [],  // filled separately via budgetsApi.list()
+    };
+    return { ...res, data: { data: overview } };
+  },
 
   create: (dto: CreateBudgetDto) =>
-    api.post<ApiResponse<Budget>>('/budgets', dto),
+    api.post<any>('/budgets', {
+      categoryId: dto.categoryId,
+      limitNaira: dto.limitCents ? dto.limitCents / 100 : (dto as any).limitNaira,
+      month:      dto.month,
+      year:       dto.year,
+    }),
 
   update: (id: string, dto: Partial<CreateBudgetDto>) =>
-    api.patch<ApiResponse<Budget>>(`/budgets/${id}`, dto),
+    api.patch<any>(`/budgets/${id}`, {
+      limitNaira: dto.limitCents ? dto.limitCents / 100 : (dto as any).limitNaira,
+    }),
 
   delete: (id: string) =>
-    api.delete<ApiResponse<void>>(`/budgets/${id}`),
+    api.delete<{ message: string }>(`/budgets/${id}`),
 };
 
 // ── INSIGHTS ─────────────────────────────────────────────────────────────────
 export const insightsApi = {
-  list: () =>
-    api.get<ApiResponse<Insight[]>>('/insights'),
+  list: async () => {
+    const res = await api.get<any[]>('/insights');
+    return { ...res, data: { data: (res.data ?? []).map(normaliseInsight) } };
+  },
 
-  generate: () =>
-    api.post<ApiResponse<Insight[]>>('/insights/generate'),
+  generate: async () => {
+    const res = await api.post<{ message: string; insightsCount: number; insights: any[] }>('/insights/generate');
+    return { ...res, data: { data: (res.data.insights ?? []).map(normaliseInsight) } };
+  },
 
   markAsRead: (id: string) =>
-    api.patch<ApiResponse<void>>(`/insights/${id}/read`),
+    api.patch<{ id: string; isRead: boolean; message: string }>(`/insights/${id}/read`),
 };
 
 // ── CATEGORIES ────────────────────────────────────────────────────────────────
 export const categoriesApi = {
   list: () =>
-    api.get<ApiResponse<Category[]>>('/categories'),
+    api.get<Category[]>('/categories'),
 
-  create: (dto: Pick<Category, 'name' | 'icon' | 'color'>) =>
-    api.post<ApiResponse<Category>>('/categories', dto),
+  create: (dto: { name: string; icon?: string; color?: string }) =>
+    api.post<Category & { message: string }>('/categories', dto),
 
-  update: (id: string, dto: Partial<Pick<Category, 'name' | 'icon' | 'color'>>) =>
-    api.patch<ApiResponse<Category>>(`/categories/${id}`, dto),
+  update: (id: string, dto: { name?: string; icon?: string; color?: string }) =>
+    api.patch<Category>(`/categories/${id}`, dto),
 
   delete: (id: string) =>
-    api.delete<ApiResponse<void>>(`/categories/${id}`),
+    api.delete<{ message: string }>(`/categories/${id}`),
 };
 
 // ── ALERTS ───────────────────────────────────────────────────────────────────
 export const alertsApi = {
   settings: () =>
-    api.get<ApiResponse<AlertSettings>>('/alerts/settings'),
+    api.get<AlertSettings>('/alerts/settings'),
 
-  updateSettings: (dto: Partial<AlertSettings>) =>
-    api.patch<ApiResponse<AlertSettings>>('/alerts/settings', dto),
+  /** Backend takes { channels: ['PUSH','EMAIL','SMS'], language, enabled } */
+  updateSettings: (dto: {
+    channels?:  Array<'PUSH' | 'EMAIL' | 'SMS'>;
+    language?:  'ENGLISH' | 'PIDGIN';
+    enabled?:   boolean;
+  }) => api.patch<AlertSettings & { message: string }>('/alerts/settings', dto),
 
   history: () =>
-    api.get<ApiResponse<Alert[]>>('/alerts/history'),
+    api.get<Alert[]>('/alerts/history'),
 };
 
 // ── SUBSCRIPTIONS ─────────────────────────────────────────────────────────────
 export const subscriptionsApi = {
   plans: () =>
-    api.get<ApiResponse<SubscriptionPlan[]>>('/subscriptions/plans'),
+    api.get<SubscriptionPlan[]>('/subscriptions/plans'),
 
-  initiate: (planId: string) =>
-    api.post<ApiResponse<{ authorizationUrl: string }>>('/subscriptions/initiate', { planId }),
+  /** Backend takes { plan, interval } — not planId */
+  initiate: (dto: InitiateSubscriptionDto) =>
+    api.post<{ authorizationUrl: string; reference: string; plan: string; interval: string; amount: number }>(
+      '/subscriptions/initiate',
+      dto,
+    ),
 
   me: () =>
-    api.get<ApiResponse<Subscription | null>>('/subscriptions/me'),
+    api.get<Subscription | null>('/subscriptions/me'),
 
   cancel: () =>
-    api.post<ApiResponse<void>>('/subscriptions/cancel'),
+    api.post<{ message: string; accessUntil: string }>('/subscriptions/cancel'),
 };
 
 // ── EXPORTS ───────────────────────────────────────────────────────────────────
 export const exportsApi = {
   request: (params: { format: 'PDF' | 'EXCEL'; dateFrom: string; dateTo: string }) =>
-    api.post<ApiResponse<{ exportId: string }>>('/exports', params),
+    api.post<{ exportId: string; status: string; message: string; format: string; dateFrom: string; dateTo: string }>(
+      '/exports',
+      params,
+    ),
 
-  history: () =>
-    api.get<ApiResponse<ExportRecord[]>>('/exports/history'),
+  history: async () => {
+    const res = await api.get<any[]>('/exports/history');
+    // Normalise to legacy ExportRecord shape
+    const records: ExportRecord[] = (res.data ?? []).map((e: any) => ({
+      ...e,
+      type:      e.format,
+      url:       e.downloadUrl ?? '',
+      expiresAt: e.urlExpiresAt ?? '',
+    }));
+    return { ...res, data: { data: records } };
+  },
 };

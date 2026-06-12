@@ -5,7 +5,7 @@ import { colors } from '../src/theme/colors';
 
 export default function Index() {
   const { isAuthenticated, isLoading } = useAuthStore();
-
+  
   // Wait for session restore before redirecting
   if (isLoading) {
     return (

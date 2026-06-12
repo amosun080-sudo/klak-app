@@ -32,7 +32,7 @@ const queryClient = new QueryClient({
   },
 });
 
-const SESSION_RESTORE_TIMEOUT_MS = 8_000;
+const SESSION_RESTORE_TIMEOUT_MS = 3_000; // Reduced timeout for faster loading
 
 export default function RootLayout() {
   const login      = useAuthStore(s => s.login);
@@ -68,13 +68,15 @@ export default function RootLayout() {
         }
 
         const { data: refreshData } = await authApi.refresh(rt);
-        const tokens = refreshData.data;
-        await setRefreshToken(tokens.refreshToken);
+        // Backend returns { accessToken, refreshToken } directly
+        const tokens = { accessToken: refreshData.accessToken, refreshToken: refreshData.refreshToken };
+        await setRefreshToken(refreshData.refreshToken);
 
+        // Backend returns User directly
         const { data: userData } = await usersApi.me();
 
         if (!cancelled) {
-          login(tokens, userData.data);
+          login(tokens, userData as any);
         }
       } catch {
         await clearRefreshToken().catch(() => {});

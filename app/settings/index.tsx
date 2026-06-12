@@ -33,14 +33,14 @@ export default function SettingsScreen() {
 
   useQuery({
     queryKey: ['user', 'me'],
-    queryFn: () => usersApi.me().then(r => { updateUser(r.data.data); return r.data.data; }),
+    queryFn: () => usersApi.me().then(r => { updateUser(r.data as any); return r.data; }),
     staleTime: 5 * 60 * 1000,
   });
 
   const { mutate: updateProfile, isPending: saving } = useMutation({
     mutationFn: () => usersApi.updateMe({ fullName, language }),
     onSuccess: (res) => {
-      updateUser(res.data.data);
+      updateUser(res.data as any);
       setSaved(true);
       setEditing(false);
       setTimeout(() => setSaved(false), 2500);

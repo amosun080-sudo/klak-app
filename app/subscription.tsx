@@ -11,6 +11,7 @@ import { useAuthStore } from '../src/store/auth';
 import { colors } from '../src/theme/colors';
 import { typography, spacing, radius, shadow } from '../src/theme/index';
 import { Button, Skeleton } from '../src/components/layout/index';
+import type { SubscriptionPlan } from '../src/types/models';
 
 const PLAN_FEATURES = {
   FREE: [
@@ -61,17 +62,19 @@ export default function SubscriptionScreen() {
   const user        = useAuthStore(s => s.user);
   const currentPlan: PlanKey = (user?.plan as PlanKey) ?? 'FREE';
 
-  // Fetch live plan IDs for payment initiation — non-blocking, always show cards
-  const { data: plansData, isLoading: plansLoading } = useQuery({
+  // Plans returned directly as array (no wrapper)
+  const { isLoading: plansLoading } = useQuery({
     queryKey: ['plans'],
-    queryFn: () => subscriptionsApi.plans().then(r => r.data.data),
+    queryFn: () => subscriptionsApi.plans().then(r => (r.data as any) as SubscriptionPlan[]),
     staleTime: 60 * 60 * 1000,
     retry: 1,
   });
 
   const { mutate: initiate, isPending } = useMutation({
-    mutationFn: (planId: string) => subscriptionsApi.initiate(planId).then(r => r.data.data),
-    onSuccess: async ({ authorizationUrl }) => { await Linking.openURL(authorizationUrl); },
+    // Backend takes { plan, interval } — not planId
+    mutationFn: (plan: 'PRO' | 'PREMIUM') =>
+      subscriptionsApi.initiate({ plan, interval: 'MONTHLY' }).then(r => r.data as any),
+    onSuccess: async (data: any) => { await Linking.openURL(data.authorizationUrl); },
     onError: (err) => Alert.alert('Payment Error', getApiError(err)),
   });
 
@@ -89,10 +92,6 @@ export default function SubscriptionScreen() {
       { text: 'Cancel', style: 'destructive', onPress: () => cancel() },
     ],
   );
-
-  // Get plan ID from live data if available, otherwise fall back to slug
-  const getPlanId = (slug: PlanKey): string =>
-    plansData?.find(p => p.slug === slug)?.id ?? slug.toLowerCase();
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -197,7 +196,7 @@ export default function SubscriptionScreen() {
                     ) : (
                       <Button
                         label={isPending ? 'Redirecting…' : `Upgrade to ${meta.name}`}
-                        onPress={() => initiate(getPlanId(slug))}
+                        onPress={() => initiate(slug as 'PRO' | 'PREMIUM')}
                         loading={isPending}
                         variant={isPremium ? 'gold' : 'primary'}
                         style={{ marginTop: spacing[5] }}

@@ -25,7 +25,6 @@ const config: ExpoConfig = {
     package: 'ng.getklak.app',
     versionCode: 1,
     adaptiveIcon: {
-      foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#060E07',
     },
     permissions: [
@@ -40,7 +39,6 @@ const config: ExpoConfig = {
     [
       'expo-notifications',
       {
-        icon: './assets/notification-icon.png',
         color: '#00D68F',
       },
     ],

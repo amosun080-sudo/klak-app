@@ -18,7 +18,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   accessToken: null,
   isAuthenticated: false,
-  isLoading: true,
+  isLoading: true, // Start with true for proper session restore
 
   login: (tokens, user) => set({
     user,

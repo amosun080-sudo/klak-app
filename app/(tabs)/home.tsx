@@ -6,7 +6,8 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useAuthStore } from '../../src/store/auth';
-import { useBalance, useRecentTransactions } from '../../src/lib/useDemoQuery';
+import { useQuery } from '@tanstack/react-query';
+import { accountsApi, transactionsApi } from '../../src/lib/api/index';
 import { BOTTOM_TAB_PADDING } from './_layout';
 import { colors } from '../../src/theme/colors';
 import { typography, spacing, radius, shadow } from '../../src/theme/index';
@@ -16,7 +17,7 @@ import { getGreeting, formatNairaFull, formatTxDate, getCategoryById } from '../
 // ── Quick action items ────────────────────────────────────────────────────────
 const ACTION_ITEMS = [
   { label: 'Transfers', icon: '↗', route: '/(tabs)/transactions' },
-  { label: 'Accounts',  icon: '⬡', route: '/accounts/link' },
+  { label: 'Accounts',  icon: '⬡', route: '/accounts' },
   { label: 'Alerts',    icon: '◎', route: '/alerts' },
   { label: 'Settings',  icon: '⊞', route: '/settings' },
 ] as const;
@@ -29,26 +30,35 @@ export default function HomeScreen() {
     isLoading: balLoading,
     isError: balError,
     refetch: refetchBalance,
-  } = useBalance();
+  } = useQuery({
+    queryKey: ['balance'],
+    queryFn: () => accountsApi.balance().then(r => r.data),
+    staleTime: 30_000,
+  });
 
   const {
-    data: transactions = [],
+    data: transactionsData,
     isLoading: txLoading,
     isError: txError,
     refetch: refetchTx,
-  } = useRecentTransactions(5);
+  } = useQuery({
+    queryKey: ['transactions', { limit: 5 }],
+    queryFn: () => transactionsApi.list({ limit: 5 }).then(r => r.data),
+    staleTime: 30_000,
+  });
+
+  const accounts = balanceData?.accounts ?? [];
+  const totalCents = balanceData?.totalCents ?? 0;
+  const transactions = transactionsData?.data ?? [];
+  const hasError = balError || txError;
 
   const onRefresh = useCallback(() => {
     refetchBalance();
     refetchTx();
   }, [refetchBalance, refetchTx]);
 
-  const accounts     = balanceData?.accounts ?? [];
-  const totalCents   = balanceData?.totalCents ?? 0;
-  const hasError     = balError || txError;
-
   const firstName = useMemo(() => {
-    if (!user?.fullName) return '';
+    if (!user?.fullName) return 'Guest';
     return user.fullName.split(' ')[0];
   }, [user?.fullName]);
 
@@ -70,7 +80,7 @@ export default function HomeScreen() {
           <View>
             <Text style={styles.greeting}>{getGreeting()}</Text>
             <Text style={styles.userName} numberOfLines={1}>
-              {firstName || 'Welcome back'}
+              {firstName || 'Welcome to Klak'}
             </Text>
           </View>
           <TouchableOpacity
@@ -178,12 +188,12 @@ export default function HomeScreen() {
             </View>
           ) : (
             <View style={styles.txList}>
-              {transactions.map((tx, index) => {
+              {transactions.map((tx: any, index: number) => {
                 const category = getCategoryById(tx.categoryId ?? tx.category?.id);
-                const isDebit = tx.amount < 0;
+                const isDebit = (tx.amount ?? 0) < 0;
                 const amountStr = isDebit
-                  ? `−${formatNairaFull(Math.abs(tx.amount))}`
-                  : `+${formatNairaFull(tx.amount)}`;
+                  ? `−${formatNairaFull(Math.abs(tx.amount ?? 0))}`
+                  : `+${formatNairaFull(tx.amount ?? 0)}`;
                 const isLast = index === transactions.length - 1;
                 return (
                   <Pressable
@@ -214,12 +224,12 @@ export default function HomeScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Linked Accounts</Text>
-              <TouchableOpacity onPress={() => router.push('/accounts/link')} activeOpacity={0.7}>
-                <Text style={styles.seeAll}>+ Add</Text>
+              <TouchableOpacity onPress={() => router.push('/accounts')} activeOpacity={0.7}>
+                <Text style={styles.seeAll}>Manage</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.accountsRow}>
-              {accounts.slice(0, 3).map(acc => (
+              {accounts.slice(0, 3).map((acc: any) => (
                 <View key={acc.id} style={styles.accountChip}>
                   <View style={styles.accountInitials}>
                     <Text style={styles.accountInitialsText}>

@@ -61,7 +61,7 @@ export function getApiError(err: unknown): string {
 // ── Attach JWT on every request ───────────────────────────────────────────────
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken;
-  if (token && token !== 'demo-access-token') {
+  if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
@@ -80,14 +80,15 @@ async function refreshAccessToken(): Promise<string> {
   const refreshToken = await getRefreshToken();
   if (!refreshToken) throw new Error('No refresh token');
 
-  const { data } = await axios.post(
+  // Backend returns { accessToken, refreshToken } directly — no data wrapper
+  const { data } = await axios.post<{ accessToken: string; refreshToken: string }>(
     `${BASE_URL}/api/v1/auth/refresh`,
     { refreshToken },
     { timeout: 10_000 },
   );
 
-  const newAccess: string  = data.data.accessToken;
-  const newRefresh: string = data.data.refreshToken;
+  const newAccess  = data.accessToken;
+  const newRefresh = data.refreshToken;
 
   useAuthStore.getState().setAccessToken(newAccess);
   await setRefreshToken(newRefresh);

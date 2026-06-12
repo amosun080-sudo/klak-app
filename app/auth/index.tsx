@@ -77,9 +77,12 @@ function RegisterScreen({ onLogin, onOTP }: { onLogin: () => void; onOTP: (phone
     setLoading(true);
     try {
       const normalized = normalizePhone(phone);
-      await authApi.register({ phone: normalized, fullName: fullName.trim(), password });
-      await authApi.sendOTP(normalized);
-      onOTP(normalized);
+      // Backend returns { user, accessToken, refreshToken } directly
+      const { data } = await authApi.register({ phone: normalized, fullName: fullName.trim(), password });
+      const tokens = { accessToken: data.accessToken, refreshToken: data.refreshToken };
+      await setRefreshToken(data.refreshToken);
+      login(tokens, data.user);
+      router.replace('/(tabs)/home');
     } catch (err) {
       setErrors({ form: getApiError(err) });
     } finally {
@@ -157,10 +160,11 @@ function LoginScreen({ onRegister, onOTP }: { onRegister: () => void; onOTP: (ph
     if (!isValidNigerianPhone(normalized)) { setError('Enter a valid Nigerian phone number.'); return; }
     setLoading(true); setError('');
     try {
+      // Backend returns { user, accessToken, refreshToken } directly
       const { data } = await authApi.login({ phone: normalized, password });
-      const { tokens, user } = data.data;
-      await setRefreshToken(tokens.refreshToken);
-      login(tokens, user);
+      const tokens = { accessToken: data.accessToken, refreshToken: data.refreshToken };
+      await setRefreshToken(data.refreshToken);
+      login(tokens, data.user);
       router.replace('/(tabs)/home');
     } catch (err) {
       setError(getApiError(err));
@@ -247,11 +251,16 @@ function OTPScreen({ phone, onBack }: { phone: string; onBack: () => void }) {
     if (otp.length < 6) { setError('Enter the 6-digit code'); return; }
     setLoading(true); setError('');
     try {
+      // OTP verify only confirms phone — returns { verified, message }
       const { data } = await authApi.verifyOTP({ phone, code: otp });
-      const { tokens, user } = data.data;
-      await setRefreshToken(tokens.refreshToken);
-      login(tokens, user);
-      router.replace('/(tabs)/home');
+      if (!data.verified) {
+        setError('Invalid or expired code. Please try again.');
+        return;
+      }
+      // After OTP verify, log the user in via password login
+      // (they provided phone during OTP request — prompt for password)
+      // For now navigate back to login with success message
+      onBack();
     } catch (err) {
       setError(getApiError(err));
     } finally {

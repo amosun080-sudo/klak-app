@@ -37,7 +37,7 @@ function InsightCard({ insight }: { insight: Insight }) {
       title:  colors.insightSuccessTitle,
       bg:     colors.insightSuccessBg,
     },
-  }[insight.severity];
+  }[insight.severity || 'info'];
 
   return (
     <View style={[styles.insightCard, { backgroundColor: cfg.bg, borderColor: cfg.border + '40' }]}>
@@ -51,11 +51,11 @@ function InsightCard({ insight }: { insight: Insight }) {
       <Text style={styles.insightBody}>{insight.body}</Text>
       <View style={styles.insightFooter}>
         <Text style={styles.insightMeta}>
-          {new Date(insight.generatedAt).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}
+          {new Date(insight.generatedAt || '').toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}
         </Text>
         <View style={[styles.insightSeverityBadge, { backgroundColor: cfg.border + '20', borderColor: cfg.border + '40' }]}>
           <Text style={[styles.insightSeverityText, { color: cfg.border }]}>
-            {insight.severity.toUpperCase()}
+            {(insight.severity || 'info').toUpperCase()}
           </Text>
         </View>
       </View>
