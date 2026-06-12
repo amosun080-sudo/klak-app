@@ -106,6 +106,18 @@ api.interceptors.response.use(
       errorReporter.captureApiError(error, endpoint);
     }
 
+    // Handle rate limiting (429) - NEW
+    if (error.response?.status === 429 && !original._retry) {
+      original._retry = true;
+      
+      const retryAfter = parseInt(error.response.headers['retry-after'] ?? '60', 10);
+      console.warn(`Rate limited. Retrying after ${retryAfter}s`);
+      
+      // Wait then retry
+      await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+      return api(original);
+    }
+
     // Only attempt refresh on 401, and only once per request
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true;

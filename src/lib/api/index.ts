@@ -1,4 +1,5 @@
 import api from '../api';
+import { cacheManager, withCache } from '../cache';
 import type {
   AuthResponse, TokenPair, User,
   Account, BalanceResponse,
@@ -79,63 +80,136 @@ export const authApi = {
 
 // ── USERS ─────────────────────────────────────────────────────────────────────
 export const usersApi = {
-  me: () =>
-    api.get<User>('/users/me'),
+  me: withCache(
+    () => api.get<User>('/users/me'),
+    'user'
+  ),
 
-  updateMe: (body: Partial<Pick<User, 'fullName' | 'language'>>) =>
-    api.patch<User>('/users/me', body),
+  updateMe: async (body: Partial<Pick<User, 'fullName' | 'language'>>) => {
+    // Clear cache after updating profile
+    await cacheManager.clear('user');
+    return api.patch<User>('/users/me', body);
+  },
 
   updateFcmToken: (fcmToken: string) =>
     api.patch<{ message: string }>('/users/me/fcm-token', { fcmToken }),
 
-  deleteMe: () =>
-    api.delete<{ message: string }>('/users/me'),
+  deleteMe: async () => {
+    // Clear all cache when deleting account
+    await cacheManager.clear();
+    return api.delete<{ message: string }>('/users/me');
+  },
 };
 
 // ── ACCOUNTS ─────────────────────────────────────────────────────────────────
 export const accountsApi = {
-  list: () =>
-    api.get<Account[]>('/accounts'),
+  list: withCache(
+    () => api.get<Account[]>('/accounts'),
+    'accounts'
+  ),
 
   /** Generate a Plaid Link token to initialise the bank linking widget */
   createLinkToken: () =>
     api.post<{ linkToken: string }>('/accounts/plaid/link-token'),
 
   /** Exchange Plaid public token to link a bank account */
-  link: (code: string) =>
-    api.post<Account & { message: string }>('/accounts/link', { code }),
+  link: async (code: string) => {
+    // Clear cache after linking new account
+    await cacheManager.clear('accounts');
+    await cacheManager.clear('balance');
+    return api.post<Account & { message: string }>('/accounts/link', { code });
+  },
 
-  balance: () =>
-    api.get<BalanceResponse>('/accounts/balance'),
+  balance: withCache(
+    () => api.get<BalanceResponse>('/accounts/balance'),
+    'balance'
+  ),
 
-  unlink: (id: string) =>
-    api.delete<{ message: string }>(`/accounts/${id}`),
+  unlink: async (id: string) => {
+    // Clear cache after unlinking
+    await cacheManager.clear('accounts');
+    await cacheManager.clear('balance');
+    return api.delete<{ message: string }>(`/accounts/${id}`);
+  },
 
-  sync: (id: string) =>
-    api.post<{ message: string; newTransactions: number }>(`/accounts/${id}/sync`),
+  sync: async (id: string) => {
+    // Clear cache after syncing (new transactions might be available)
+    await cacheManager.clear('balance');
+    return api.post<{ message: string; newTransactions: number }>(`/accounts/${id}/sync`);
+  },
 };
 
 // ── TRANSACTIONS ──────────────────────────────────────────────────────────────
 export const transactionsApi = {
   list: async (params?: TransactionListParams) => {
-    const res = await api.get<{
-      data: any[];
-      pagination: { page: number; limit: number; total: number };
-    }>('/transactions', { params });
-    return {
-      ...res,
-      data: {
-        data: (res.data.data ?? []).map(normaliseTransaction),
-        pagination: res.data.pagination,
-        // legacy compat
-        meta: res.data.pagination ? {
-          page:       res.data.pagination.page,
-          limit:      res.data.pagination.limit,
-          total:      res.data.pagination.total,
-          totalPages: Math.ceil(res.data.pagination.total / (res.data.pagination.limit || 25)),
-        } : undefined,
-      },
-    };
+    // Separate search from backend params for potential client-side fallback
+    const { search, ...backendParams } = params || {};
+    
+    try {
+      // First try: send search to backend
+      const res = await api.get<{
+        data: any[];
+        pagination: { page: number; limit: number; total: number };
+      }>('/transactions', { params: search ? { ...backendParams, search } : backendParams });
+      
+      let transactions = (res.data.data ?? []).map(normaliseTransaction);
+      
+      return {
+        ...res,
+        data: {
+          data: transactions,
+          pagination: res.data.pagination,
+          meta: res.data.pagination ? {
+            page:       res.data.pagination.page,
+            limit:      res.data.pagination.limit,
+            total:      res.data.pagination.total,
+            totalPages: Math.ceil(res.data.pagination.total / (res.data.pagination.limit || 25)),
+          } : undefined,
+        },
+      };
+    } catch (error) {
+      // If search fails due to unsupported parameter, fallback to client-side search
+      if (search && error && (error as any).response?.status === 400) {
+        console.log('Backend search not supported, falling back to client-side filtering');
+        
+        const res = await api.get<{
+          data: any[];
+          pagination: { page: number; limit: number; total: number };
+        }>('/transactions', { params: backendParams });
+        
+        let transactions = (res.data.data ?? []).map(normaliseTransaction);
+        
+        // Client-side search implementation
+        if (search) {
+          const searchLower = search.toLowerCase();
+          transactions = transactions.filter((tx: any) => 
+            tx.description?.toLowerCase().includes(searchLower) ||
+            tx.narration?.toLowerCase().includes(searchLower) ||
+            tx.category?.name?.toLowerCase().includes(searchLower)
+          );
+        }
+        
+        return {
+          ...res,
+          data: {
+            data: transactions,
+            pagination: {
+              ...res.data.pagination,
+              total: transactions.length, // Update total after filtering
+            },
+            meta: res.data.pagination ? {
+              page:       res.data.pagination.page,
+              limit:      res.data.pagination.limit,
+              total:      transactions.length,
+              totalPages: Math.ceil(transactions.length / (res.data.pagination.limit || 25)),
+            } : undefined,
+          },
+        };
+      }
+      
+      // Re-throw if it's not a search-related error
+      throw error;
+    }
   },
 
   get: async (id: string) => {
@@ -208,17 +282,25 @@ export const insightsApi = {
 
 // ── CATEGORIES ────────────────────────────────────────────────────────────────
 export const categoriesApi = {
-  list: () =>
-    api.get<Category[]>('/categories'),
+  list: withCache(
+    () => api.get<Category[]>('/categories'),
+    'categories'
+  ),
 
-  create: (dto: { name: string; icon?: string; color?: string }) =>
-    api.post<Category & { message: string }>('/categories', dto),
+  create: async (dto: { name: string; icon?: string; color?: string }) => {
+    await cacheManager.clear('categories');
+    return api.post<Category & { message: string }>('/categories', dto);
+  },
 
-  update: (id: string, dto: { name?: string; icon?: string; color?: string }) =>
-    api.patch<Category>(`/categories/${id}`, dto),
+  update: async (id: string, dto: { name?: string; icon?: string; color?: string }) => {
+    await cacheManager.clear('categories');
+    return api.patch<Category>(`/categories/${id}`, dto);
+  },
 
-  delete: (id: string) =>
-    api.delete<{ message: string }>(`/categories/${id}`),
+  delete: async (id: string) => {
+    await cacheManager.clear('categories');
+    return api.delete<{ message: string }>(`/categories/${id}`);
+  },
 };
 
 // ── ALERTS ───────────────────────────────────────────────────────────────────
@@ -239,8 +321,10 @@ export const alertsApi = {
 
 // ── SUBSCRIPTIONS ─────────────────────────────────────────────────────────────
 export const subscriptionsApi = {
-  plans: () =>
-    api.get<SubscriptionPlan[]>('/subscriptions/plans'),
+  plans: withCache(
+    () => api.get<SubscriptionPlan[]>('/subscriptions/plans'),
+    'plans'
+  ),
 
   /** Backend takes { plan, interval } — not planId */
   initiate: (dto: InitiateSubscriptionDto) =>
@@ -274,5 +358,12 @@ export const exportsApi = {
       expiresAt: e.urlExpiresAt ?? '',
     }));
     return { ...res, data: { data: records } };
+  },
+};
+
+// ── HEALTH CHECK ─────────────────────────────────────────────────────────────
+export const healthApi = {
+  check: async () => {
+    return api.get('/health', { timeout: 5000 });
   },
 };
