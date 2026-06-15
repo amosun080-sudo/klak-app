@@ -7,7 +7,7 @@ const config: ExpoConfig = {
   version: '1.0.0',
   orientation: 'portrait',
   userInterfaceStyle: 'dark',
-  platforms: ['ios', 'android'],
+  platforms: ['ios', 'android', 'web'],
   splash: {
     resizeMode: 'contain',
     backgroundColor: '#060E07',
@@ -32,6 +32,9 @@ const config: ExpoConfig = {
       'android.permission.RECEIVE_BOOT_COMPLETED',
       'android.permission.VIBRATE',
     ],
+  },
+  web: {
+    bundler: 'metro',
   },
   plugins: [
     'expo-router',

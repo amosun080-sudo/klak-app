@@ -5,14 +5,13 @@ import {
 } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { budgetsApi } from '../../../src/lib/api/index';
 import { colors } from '../../../src/theme/colors';
 import { typography, spacing, radius, shadow } from '../../../src/theme/index';
 import { Button, EmptyState, ScreenHeader, Skeleton } from '../../../src/components/layout/index';
 import { currentMonthYear, formatMonthYear, formatNaira, getBudgetStatus } from '../../../src/utils/index';
-import { useBudgetOverview } from '../../../src/lib/useDemoQuery';
 import { BOTTOM_TAB_PADDING } from '../_layout';
 import type { Budget } from '../../../src/types/models';
 
@@ -117,11 +116,31 @@ export default function BudgetsScreen() {
   const { month, year } = currentMonthYear();
   const qc = useQueryClient();
 
-  const { data: overview, isLoading, refetch, isRefetching, isError } = useBudgetOverview();
+  // Fetch budgets list
+  const { data: budgetsData, isLoading: budgetsLoading, refetch: refetchBudgets, isError: budgetsError } = useQuery({
+    queryKey: ['budgets'],
+    queryFn: () => budgetsApi.list().then(r => r.data.data),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
-  const onRefresh = useCallback(() => refetch(), [refetch]);
+  // Fetch budget overview
+  const { data: overviewData, isLoading: overviewLoading, refetch: refetchOverview, isError: overviewError } = useQuery({
+    queryKey: ['budgets', 'overview'],
+    queryFn: () => budgetsApi.overview().then(r => r.data.data),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
-  const budgets: Budget[] = overview?.budgets ?? [];
+  const isLoading = budgetsLoading || overviewLoading;
+  const isError = budgetsError || overviewError;
+  const isRefetching = false; // Simplified for now
+
+  const onRefresh = useCallback(() => {
+    refetchBudgets();
+    refetchOverview();
+  }, [refetchBudgets, refetchOverview]);
+
+  const budgets: Budget[] = budgetsData ?? [];
+  const overview = overviewData ? { ...overviewData, budgets } : null;
 
   const totalBudgeted = useMemo(() => budgets.reduce((s, b) => s + (b.limitCents ?? 0), 0), [budgets]);
   const totalSpent    = useMemo(() => budgets.reduce((s, b) => s + (b.spentCents ?? 0), 0), [budgets]);

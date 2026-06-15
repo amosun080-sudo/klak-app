@@ -1,5 +1,7 @@
 import api from '../api';
+import axios from 'axios';
 import { cacheManager, withCache } from '../cache';
+import { env } from '../env';
 import type {
   AuthResponse, TokenPair, User,
   Account, BalanceResponse,
@@ -364,6 +366,29 @@ export const exportsApi = {
 // ── HEALTH CHECK ─────────────────────────────────────────────────────────────
 export const healthApi = {
   check: async () => {
-    return api.get('/health', { timeout: 5000 });
+    console.log('🔍 Starting health check...');
+    console.log('📍 API Base URL from env:', env.apiBaseUrl);
+    console.log('📍 Full health URL:', `${env.apiBaseUrl}/health`);
+    
+    // Create a separate axios instance for health check (not under /api/v1)
+    const healthClient = axios.create({
+      baseURL: env.apiBaseUrl,
+      timeout: 10000, // Increased timeout
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    try {
+      const response = await healthClient.get('/health');
+      console.log('✅ Health check successful:', response.data);
+      return response;
+    } catch (error) {
+      console.error('❌ Health check failed:', error);
+      if (error.code) console.error('Error code:', error.code);
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response data:', error.response.data);
+      }
+      throw error;
+    }
   },
 };

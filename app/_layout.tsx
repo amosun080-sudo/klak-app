@@ -63,6 +63,15 @@ export default function RootLayout() {
 
   // ── Health check on app startup ──────────────────────────────────────────
   useEffect(() => {
+    // Temporary bypass for debugging - set to true to skip health check
+    const SKIP_HEALTH_CHECK = true;
+    
+    if (SKIP_HEALTH_CHECK) {
+      console.log('⚠️ Health check bypassed for debugging');
+      setIsOnline(true);
+      return;
+    }
+    
     healthApi.check()
       .then(() => {
         console.log('✓ API is healthy');
@@ -70,6 +79,8 @@ export default function RootLayout() {
       })
       .catch((err) => {
         console.log('✗ API unreachable:', err.message);
+        console.log('✗ Error details:', err.response?.status, err.response?.data);
+        console.log('✗ Full error:', err);
         setIsOnline(false);
       });
   }, []);
@@ -176,9 +187,17 @@ export default function RootLayout() {
           <TouchableOpacity 
             style={styles.retryButton}
             onPress={() => {
+              console.log('Retrying health check...');
               healthApi.check()
-                .then(() => setIsOnline(true))
-                .catch(() => setIsOnline(false));
+                .then(() => {
+                  console.log('✓ Retry successful');
+                  setIsOnline(true);
+                })
+                .catch((err) => {
+                  console.log('✗ Retry failed:', err.message);
+                  console.log('✗ Error details:', err.response?.status, err.response?.data);
+                  setIsOnline(false);
+                });
             }}
           >
             <Text style={styles.retryText}>Try Again</Text>

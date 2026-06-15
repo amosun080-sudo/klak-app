@@ -48,6 +48,10 @@ export function getApiError(err: unknown): string {
       return 'Request timed out. Please check your connection.';
     }
     if (!err.response) {
+      // Check if it's a CORS error on web development
+      if (Platform.OS === 'web' && err.code === 'ERR_NETWORK') {
+        return 'CORS issue detected. API calls are blocked on web development. Try on mobile device or wait for production deployment.';
+      }
       return 'Could not connect to the server. Check your API URL in .env.local.';
     }
     if (err.response.status === 401) return 'Session expired. Please log in again.';

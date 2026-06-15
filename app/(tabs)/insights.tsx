@@ -4,7 +4,7 @@ import {
   RefreshControl, TouchableOpacity, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { insightsApi, getApiError } from '../../src/lib/api/index';
 import { useAuthStore } from '../../src/store/auth';
@@ -12,7 +12,6 @@ import { colors } from '../../src/theme/colors';
 import { typography, spacing, radius, shadow } from '../../src/theme/index';
 import { ScreenHeader, EmptyState, PlanGate, Skeleton, Button } from '../../src/components/layout/index';
 import { planMeetsRequirement } from '../../src/utils/index';
-import { useInsights } from '../../src/lib/useDemoQuery';
 import { BOTTOM_TAB_PADDING } from './_layout';
 import type { Insight } from '../../src/types/models';
 
@@ -68,7 +67,12 @@ export default function InsightsScreen() {
   const qc     = useQueryClient();
   const hasPro = planMeetsRequirement(user?.plan ?? 'FREE', 'PRO');
 
-  const { data, isLoading, refetch, isRefetching, isError } = useInsights(hasPro);
+  const { data, isLoading, refetch, isRefetching, isError } = useQuery({
+    queryKey: ['insights'],
+    queryFn: () => insightsApi.list().then(r => r.data.data),
+    enabled: hasPro, // Only fetch if user has Pro plan
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
   const { mutate: generate, isPending: generating } = useMutation({
     mutationFn: insightsApi.generate,
