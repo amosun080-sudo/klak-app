@@ -11,7 +11,7 @@ import { colors } from '../../../src/theme/colors';
 import { typography, spacing, radius } from '../../../src/theme/index';
 import { CurrencyInput } from '../../../src/components/forms/index';
 import { Button } from '../../../src/components/layout/index';
-import { SYSTEM_CATEGORIES, currentMonthYear } from '../../../src/utils/index';
+import { SYSTEM_CATEGORIES, currentMonthYear, safeBack } from '../../../src/utils/index';
 
 // This screen is pushed modally over the tab bar, so it uses its own
 // bottom padding — not the tab-bar-aware one.
@@ -44,19 +44,19 @@ export default function CreateBudgetScreen() {
       month, 
       year 
     }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['budgets'] }); router.back(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['budgets'] }); safeBack('/(tabs)/budgets/index'); },
     onError: (err) => setErrors({ form: getApiError(err) }),
   });
 
   const { mutate: update, isPending: updating } = useMutation({
     mutationFn: () => budgetsApi.update(id!, { limitNaira: limitCents / 100 }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['budgets'] }); router.back(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['budgets'] }); safeBack('/(tabs)/budgets/index'); },
     onError: (err) => setErrors({ form: getApiError(err) }),
   });
 
   const { mutate: del, isPending: deleting } = useMutation({
     mutationFn: () => budgetsApi.delete(id!),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['budgets'] }); router.back(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['budgets'] }); safeBack('/(tabs)/budgets/index'); },
     onError: (err) => Alert.alert('Delete Failed', getApiError(err)),
   });
 
@@ -89,7 +89,7 @@ export default function CreateBudgetScreen() {
     <SafeAreaView style={styles.safe}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity onPress={() => safeBack('/(tabs)/budgets/index')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Text style={styles.cancelText}>Cancel</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{isEdit ? 'Edit Budget' : 'New Budget'}</Text>

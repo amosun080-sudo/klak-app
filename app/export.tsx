@@ -12,7 +12,7 @@ import { useAuthStore } from '../src/store/auth';
 import { colors } from '../src/theme/colors';
 import { typography, spacing, radius } from '../src/theme/index';
 import { Button, Card, PlanGate, EmptyState, Skeleton } from '../src/components/layout/index';
-import { planMeetsRequirement } from '../src/utils/index';
+import { planMeetsRequirement, safeBack } from '../src/utils/index';
 import type { ExportRecord } from '../src/types/models';
 
 export default function ExportScreen() {
@@ -71,7 +71,7 @@ export default function ExportScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => safeBack('/settings')}>
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Export</Text>
@@ -104,7 +104,7 @@ export default function ExportScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => safeBack('/settings')}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Export statements</Text>

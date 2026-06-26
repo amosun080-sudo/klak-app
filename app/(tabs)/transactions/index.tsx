@@ -38,13 +38,13 @@ export default function TransactionsScreen() {
     queryFn: () => transactionsApi.summary({
         startDate: `${year}-${String(month).padStart(2, '0')}-01`,
         endDate:   `${year}-${String(month).padStart(2, '0')}-31`,
-      }).then(r => r.data.data),
+      }).then(r => r.data ?? null),
     staleTime: 2 * 60 * 1000,
   });
 
-  const debitCents  = summaryData?.reduce((s, r) => s + (r.totalCents < 0 ? Math.abs(r.totalCents) : 0), 0) ?? 0;
-  const creditCents = summaryData?.reduce((s, r) => s + (r.totalCents > 0 ? r.totalCents : 0), 0)         ?? 0;
-  const netCents    = creditCents - debitCents;
+  const debitCents  = summaryData?.totalExpenses ?? 0;
+  const creditCents = summaryData?.totalIncome   ?? 0;
+  const netCents    = summaryData?.netSavings    ?? (creditCents - debitCents);
 
   // ── Transaction list ──────────────────────────────────────────────────────
   const {

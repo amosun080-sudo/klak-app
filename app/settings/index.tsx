@@ -13,7 +13,7 @@ import { colors } from '../../src/theme/colors';
 import { typography, spacing, radius, shadow } from '../../src/theme/index';
 import { LabelledInput } from '../../src/components/forms/index';
 import { Button, Card } from '../../src/components/layout/index';
-import { planLabel } from '../../src/utils/index';
+import { planLabel, safeBack } from '../../src/utils/index';
 
 export default function SettingsScreen() {
   const user       = useAuthStore(s => s.user);
@@ -133,7 +133,7 @@ export default function SettingsScreen() {
     <SafeAreaView style={styles.safe}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => safeBack('/(tabs)/home')}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
@@ -285,25 +285,6 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
   scroll: { paddingBottom: spacing[10] },
-
-  // Demo banner
-  demoBanner: {
-    marginHorizontal: spacing[5],
-    marginTop: spacing[4],
-    marginBottom: spacing[2],
-    backgroundColor: colors.klakGoldGlow,
-    borderRadius: radius.md,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.klakGold,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
-  },
-  demoBannerText: {
-    fontFamily: typography.family.semibold,
-    fontSize: typography.size.xs,
-    color: colors.klakGold,
-    letterSpacing: 0.3,
-  },
 
   // Profile hero
   profileHero: {

@@ -39,23 +39,23 @@ function TabIcon({
         toValue: focused ? 1 : 0.82,
         tension: 280,
         friction: 16,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
       Animated.timing(iconOpacity, {
         toValue: focused ? 1 : 0.5,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
       Animated.spring(underlineScale, {
         toValue: focused ? 1 : 0,
         tension: 300,
         friction: 18,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
       Animated.timing(labelOpacity, {
         toValue: focused ? 1 : 0,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
     ]).start();
   }, [focused]);

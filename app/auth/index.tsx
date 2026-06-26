@@ -88,9 +88,8 @@ function RegisterScreen({ onLogin, onOTP }: { onLogin: () => void; onOTP: (phone
       const normalized = normalizePhone(phone);
       // Backend returns { user, accessToken, refreshToken } directly
       const { data } = await authApi.register({ phone: normalized, fullName: fullName.trim(), password });
-      const tokens = { accessToken: data.accessToken, refreshToken: data.refreshToken };
       await setRefreshToken(data.refreshToken);
-      login(tokens, data.user);
+      login({ accessToken: data.accessToken, refreshToken: data.refreshToken }, data.user);
       router.replace('/(tabs)/home');
     } catch (err) {
       setErrors({ form: getApiError(err) });
@@ -182,11 +181,9 @@ function LoginScreen({ onRegister, onOTP }: { onRegister: () => void; onOTP: (ph
     
     try {
       const normalized = normalizePhone(phone);
-      // Backend returns { user, accessToken, refreshToken } directly
       const { data } = await authApi.login({ phone: normalized, password });
-      const tokens = { accessToken: data.accessToken, refreshToken: data.refreshToken };
       await setRefreshToken(data.refreshToken);
-      login(tokens, data.user);
+      login({ accessToken: data.accessToken, refreshToken: data.refreshToken }, data.user);
       router.replace('/(tabs)/home');
     } catch (err) {
       setErrors({ form: getApiError(err) });
@@ -366,10 +363,10 @@ export default function AuthScreen() {
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   const switchScreen = (next: typeof screen, phone?: string) => {
-    Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start(() => {
+    Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: Platform.OS !== 'web' }).start(() => {
       if (phone) setOtpPhone(phone);
       setScreen(next);
-      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: Platform.OS !== 'web' }).start();
     });
   };
 

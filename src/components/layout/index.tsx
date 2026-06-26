@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ActivityIndicator, Pressable, Animated,
+  ActivityIndicator, Pressable, Animated, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '../../theme/colors';
@@ -193,8 +193,8 @@ export function Skeleton({ width, height, style }: { width: number | string; hei
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(anim, { toValue: 0.85, duration: 800, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 0.3,  duration: 800, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0.85, duration: 800, useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(anim, { toValue: 0.3,  duration: 800, useNativeDriver: Platform.OS !== 'web' }),
       ])
     ).start();
   }, [anim]);

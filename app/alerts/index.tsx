@@ -10,6 +10,7 @@ import { useAuthStore } from '../../src/store/auth';
 import { colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/index';
 import { ScreenHeader, Card, EmptyState, Skeleton } from '../../src/components/layout/index';
+import { safeBack } from '../../src/utils/index';
 import type { Alert as KlakAlert } from '../../src/types/models';
 
 // ── ALERTS HISTORY ────────────────────────────────────────────────────────────
@@ -30,7 +31,7 @@ export default function AlertsScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => safeBack('/settings')}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Alerts</Text>

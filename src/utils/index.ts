@@ -1,3 +1,14 @@
+import { router } from 'expo-router';
+
+// ── NAVIGATION ────────────────────────────────────────────────────────────────
+export function safeBack(fallback = '/(tabs)/home') {
+  if (router.canGoBack()) {
+    router.back();
+  } else {
+    router.replace(fallback as any);
+  }
+}
+
 // ── CURRENCY ──────────────────────────────────────────────────────────────────
 export function formatNaira(amountCents: number): string {
   const naira = Math.abs(amountCents) / 100;

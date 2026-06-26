@@ -11,6 +11,7 @@ import type { Account } from '../../src/types/models';
 import { colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/index';
 import { Button } from '../../src/components/layout/index';
+import { safeBack } from '../../src/utils/index';
 
 const MONO_PUBLIC_KEY = process.env.EXPO_PUBLIC_MONO_PUBLIC_KEY ?? '';
 
@@ -117,6 +118,7 @@ export default function LinkAccountScreen() {
   const qc = useQueryClient();
   const [step, setStep] = useState<'intro' | 'provider' | 'mono' | 'plaid' | 'success'>('intro');
   const [linkedName, setLinkedName] = useState('');
+  const [provider, setProvider] = useState<'mono' | 'plaid' | null>(null);
 
   // ── Plaid Link Token query ───────────────────────────────────────────────
   const { data: plaidData, refetch: refetchPlaidToken } = useQuery({
@@ -188,7 +190,7 @@ export default function LinkAccountScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => safeBack('/accounts')}>
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Link account</Text>

@@ -10,7 +10,7 @@ import { colors } from '../../../src/theme/colors';
 import { typography, spacing, radius } from '../../../src/theme/index';
 import { CurrencyInput } from '../../../src/components/forms/index';
 import { Button, Card, Skeleton } from '../../../src/components/layout/index';
-import { SYSTEM_CATEGORIES, currentMonthYear, formatNaira, getBudgetStatus } from '../../../src/utils/index';
+import { SYSTEM_CATEGORIES, currentMonthYear, formatNaira, getBudgetStatus, safeBack } from '../../../src/utils/index';
 import type { Budget } from '../../../src/types/models';
 
 export default function BudgetDetailScreen() {
@@ -52,7 +52,7 @@ export default function BudgetDetailScreen() {
     mutationFn: () => budgetsApi.delete(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['budgets'] });
-      router.back();
+      safeBack('/(tabs)/budgets/index');
     },
     onError: (err) =>
       Alert.alert('Delete Failed', getApiError(err)),
@@ -75,7 +75,7 @@ export default function BudgetDetailScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => safeBack('/(tabs)/budgets/index')}>
             <Text style={styles.cancelText}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Budget</Text>
@@ -94,7 +94,7 @@ export default function BudgetDetailScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => safeBack('/(tabs)/budgets/index')}>
             <Text style={styles.cancelText}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Budget</Text>
@@ -103,7 +103,7 @@ export default function BudgetDetailScreen() {
         <View style={styles.errorState}>
           <Text style={styles.errorEmoji}>⚠️</Text>
           <Text style={styles.errorTitle}>Budget not found</Text>
-          <Button label="Go back" onPress={() => router.back()} style={{ marginTop: spacing[4] }} />
+          <Button label="Go back" onPress={() => safeBack('/(tabs)/budgets/index')} style={{ marginTop: spacing[4] }} />
         </View>
       </SafeAreaView>
     );
@@ -116,7 +116,7 @@ export default function BudgetDetailScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => safeBack('/(tabs)/budgets/index')}>
           <Text style={styles.cancelText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{budget.category?.name ?? cat.name}</Text>

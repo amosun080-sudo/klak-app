@@ -6,11 +6,12 @@ import { errorReporter } from './errorReporter';
 import { env } from './env';
 
 const BASE_URL = env.apiBaseUrl;
+console.log('[API] Base URL:', BASE_URL);
 
 export const api = axios.create({
   baseURL: `${BASE_URL}/api/v1`,
   headers: { 'Content-Type': 'application/json' },
-  timeout: 15_000,
+  timeout: 30_000,
 });
 
 // ── Token storage helpers (platform-aware) ────────────────────────────────────
@@ -45,14 +46,13 @@ export function getApiError(err: unknown): string {
     if (typeof msg === 'string') return msg;
     if (err.response?.data?.error) return err.response.data.error;
     if (err.code === 'ECONNABORTED') {
-      return 'Request timed out. Please check your connection.';
+      return 'Server is taking too long to respond. It may be warming up — please try again in a moment.';
     }
     if (!err.response) {
-      // Check if it's a CORS error on web development
       if (Platform.OS === 'web' && err.code === 'ERR_NETWORK') {
-        return 'CORS issue detected. API calls are blocked on web development. Try on mobile device or wait for production deployment.';
+        return 'Network request blocked. If running locally, ensure the backend is running and CORS allows this origin.';
       }
-      return 'Could not connect to the server. Check your API URL in .env.local.';
+      return 'Could not connect to the server. Check your network connection.';
     }
     if (err.response.status === 401) return 'Session expired. Please log in again.';
     if (err.response.status === 403) return 'You do not have permission to do that.';
@@ -68,6 +68,8 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  const method = config.method?.toUpperCase() ?? 'GET';
+  console.log(`[API] --> ${method} ${config.baseURL ?? ''}${config.url ?? ''}`, token ? '(auth)' : '(no token)');
   return config;
 });
 
@@ -84,15 +86,16 @@ async function refreshAccessToken(): Promise<string> {
   const refreshToken = await getRefreshToken();
   if (!refreshToken) throw new Error('No refresh token');
 
-  // Backend returns { accessToken, refreshToken } directly — no data wrapper
-  const { data } = await axios.post<{ accessToken: string; refreshToken: string }>(
+  // Raw axios bypasses the response interceptor, so unwrap the envelope manually
+  const { data: raw } = await axios.post<any>(
     `${BASE_URL}/api/v1/auth/refresh`,
     { refreshToken },
     { timeout: 10_000 },
   );
+  const payload = (raw?.success && raw?.data) ? raw.data : raw;
 
-  const newAccess  = data.accessToken;
-  const newRefresh = data.refreshToken;
+  const newAccess  = payload.accessToken;
+  const newRefresh = payload.refreshToken;
 
   useAuthStore.getState().setAccessToken(newAccess);
   await setRefreshToken(newRefresh);
@@ -100,24 +103,44 @@ async function refreshAccessToken(): Promise<string> {
 }
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    const method = res.config.method?.toUpperCase() ?? 'GET';
+    console.log(`[API] <-- ${res.status} ${method} ${res.config.url ?? ''}`);
+    // Unwrap { success, data, timestamp } envelope used by the backend
+    if (res.data && typeof res.data === 'object' && 'success' in res.data && 'data' in res.data) {
+      res.data = res.data.data;
+    }
+    return res;
+  },
   async (error: AxiosError) => {
     const original: RetryableConfig = (error.config as RetryableConfig) ?? {};
+    const method = original.method?.toUpperCase() ?? 'GET';
+    const url = original.url ?? 'unknown';
 
-    // Report API errors to telemetry
-    const endpoint = error.config?.url ?? 'unknown';
-    if (error.response?.status && error.response.status >= 500) {
-      errorReporter.captureApiError(error, endpoint);
+    if (error.code === 'ECONNABORTED') {
+      console.warn(`[API] TIMEOUT ${method} ${url}${original._retry ? ' (retry exhausted)' : ' — retrying once'}`);
+    } else if (!error.response) {
+      console.error(`[API] NETWORK ERROR ${method} ${url}`, { code: error.code, message: error.message });
+    } else {
+      console.warn(`[API] <-- ${error.response.status} ${method} ${url}`, error.response.data);
     }
 
-    // Handle rate limiting (429) - NEW
+    // Report API errors to telemetry
+    if (error.response?.status && error.response.status >= 500) {
+      errorReporter.captureApiError(error, url);
+    }
+
+    // Retry once on timeout — handles Render free-tier cold starts (~30-60s spin-up)
+    if (error.code === 'ECONNABORTED' && !original._retry) {
+      original._retry = true;
+      return api(original);
+    }
+
+    // Handle rate limiting (429)
     if (error.response?.status === 429 && !original._retry) {
       original._retry = true;
-      
       const retryAfter = parseInt(error.response.headers['retry-after'] ?? '60', 10);
-      console.warn(`Rate limited. Retrying after ${retryAfter}s`);
-      
-      // Wait then retry
+      console.warn(`[API] Rate limited. Retrying after ${retryAfter}s`);
       await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
       return api(original);
     }
@@ -126,8 +149,16 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true;
 
+      // No refresh token means this is a bad-credentials 401 (e.g. wrong password on login).
+      // Pass the error through so the calling screen can show the right message.
+      const existingRt = await getRefreshToken();
+      if (!existingRt) {
+        console.log('[API] 401 with no refresh token — passing through (bad credentials)');
+        return Promise.reject(error);
+      }
+
+      console.log('[API] 401 received — attempting token refresh');
       try {
-        // Ensure only ONE refresh happens at a time — all queued requests await the same promise
         if (!pendingRefresh) {
           pendingRefresh = refreshAccessToken().finally(() => {
             pendingRefresh = null;
@@ -135,10 +166,12 @@ api.interceptors.response.use(
         }
 
         const newToken = await pendingRefresh;
+        console.log('[API] Token refreshed — retrying original request');
         original.headers = original.headers ?? {};
         original.headers.Authorization = `Bearer ${newToken}`;
         return api(original);
       } catch (refreshError) {
+        console.error('[API] Token refresh failed — logging out', refreshError);
         await clearRefreshToken();
         useAuthStore.getState().logout();
         return Promise.reject(refreshError);

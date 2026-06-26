@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Pressable, Animated,
-  SafeAreaView, FlatList, ActivityIndicator,
+  SafeAreaView, FlatList, ActivityIndicator, Platform,
 } from 'react-native';
 import { colors } from '../../theme/colors';
 import { typography, spacing, radius, shadow } from '../../theme/index';
@@ -17,8 +17,8 @@ export function LoadingSkeleton({ lines = 3, width = '80%' }: LoadingSkeletonPro
   React.useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(anim, { toValue: 1, duration: 1000, useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 0.3, duration: 1000, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 1, duration: 1000, useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(anim, { toValue: 0.3, duration: 1000, useNativeDriver: Platform.OS !== 'web' }),
       ])
     ).start();
   }, [anim]);

@@ -6,53 +6,15 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { accountsApi, getApiError } from '../../src/lib/api/index';
-import { useAuthStore } from '../../src/store/auth';
 import { colors } from '../../src/theme/colors';
 import { typography, spacing, radius, shadow } from '../../src/theme/index';
 import { Button, Skeleton, EmptyState } from '../../src/components/layout/index';
-import { formatNairaFull, formatTxDate } from '../../src/utils/index';
+import { formatNairaFull, formatTxDate, safeBack } from '../../src/utils/index';
 import type { Account } from '../../src/types/models';
-
-// Demo accounts for testing
-const DEMO_ACCOUNTS = [
-  {
-    id: 'demo-1',
-    institutionName: 'GTBank',
-    accountName: 'Demo Account',
-    accountType: 'SAVINGS' as const,
-    balanceCents: 12500000,
-    currency: 'NGN',
-    lastSyncedAt: new Date().toISOString(),
-    isActive: true,
-  },
-  {
-    id: 'demo-2', 
-    institutionName: 'Access Bank',
-    accountName: 'Current Account',
-    accountType: 'CURRENT' as const,
-    balanceCents: 7800000,
-    currency: 'NGN',
-    lastSyncedAt: new Date(Date.now() - 3600000).toISOString(),
-    isActive: true,
-  },
-  {
-    id: 'demo-3',
-    institutionName: 'Opay',
-    accountName: 'Wallet',
-    accountType: 'WALLET' as const,
-    balanceCents: 3200000,
-    currency: 'NGN', 
-    lastSyncedAt: new Date(Date.now() - 7200000).toISOString(),
-    isActive: true,
-  },
-];
 
 export default function AccountsScreen() {
   const qc = useQueryClient();
-  const isAuthenticated = useAuthStore(s => s.isAuthenticated);
-  const isDemo = !isAuthenticated;
 
-  // ── Accounts query ────────────────────────────────────────────────────────
   const {
     data: accounts = [],
     isLoading,
@@ -61,73 +23,36 @@ export default function AccountsScreen() {
   } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => accountsApi.list().then(r => r.data as Account[]),
-    staleTime: 30 * 1000, // 30 seconds
-    enabled: !isDemo, // Only fetch if not in demo mode
+    staleTime: 30 * 1000,
   });
 
-  // Use demo data when not authenticated
-  const displayAccounts = isDemo ? DEMO_ACCOUNTS : accounts;
-
-  // ── Unlink mutation ──────────────────────────────────────────────────────
   const { mutate: unlinkAccount, isPending: isUnlinking } = useMutation({
-    mutationFn: (accountId: string) => {
-      if (isDemo) {
-        // Simulate API call for demo
-        return new Promise(resolve => setTimeout(() => resolve({ data: { message: 'Demo account unlinked' } }), 1000));
-      }
-      return accountsApi.unlink(accountId);
-    },
+    mutationFn: (accountId: string) => accountsApi.unlink(accountId),
     onSuccess: () => {
-      if (!isDemo) {
-        // Invalidate relevant queries only if not in demo
-        qc.invalidateQueries({ queryKey: ['accounts'] });
-        qc.invalidateQueries({ queryKey: ['balance'] });
-        qc.invalidateQueries({ queryKey: ['transactions'] });
-      }
-      
-      Alert.alert(
-        'Account Unlinked',
-        isDemo 
-          ? 'Demo account removed successfully!' 
-          : 'Your account has been successfully removed from Klak.',
-        [{ text: 'OK' }]
-      );
+      qc.invalidateQueries({ queryKey: ['accounts'] });
+      qc.invalidateQueries({ queryKey: ['balance'] });
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      Alert.alert('Account Unlinked', 'Your account has been successfully removed from Klak.', [{ text: 'OK' }]);
     },
-    onError: (err) => {
-      Alert.alert('Unlink Failed', isDemo ? 'Demo error' : getApiError(err));
-    },
+    onError: (err) => Alert.alert('Unlink Failed', getApiError(err)),
   });
 
-  // ── Sync mutation ─────────────────────────────────────────────────────────
   const { mutate: syncAccount, isPending: isSyncing } = useMutation({
-    mutationFn: (accountId: string) => {
-      if (isDemo) {
-        // Simulate API call for demo
-        return new Promise(resolve => 
-          setTimeout(() => resolve({ data: { message: 'Synced', newTransactions: Math.floor(Math.random() * 5) } }), 1500)
-        );
-      }
-      return accountsApi.sync(accountId);
-    },
+    mutationFn: (accountId: string) => accountsApi.sync(accountId),
     onSuccess: (data) => {
-      if (!isDemo) {
-        qc.invalidateQueries({ queryKey: ['accounts'] });
-        qc.invalidateQueries({ queryKey: ['balance'] });
-        qc.invalidateQueries({ queryKey: ['transactions'] });
-      }
-      
-      const newTxCount = (data as any)?.newTransactions ?? 0;
+      qc.invalidateQueries({ queryKey: ['accounts'] });
+      qc.invalidateQueries({ queryKey: ['balance'] });
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      const newTxCount = (data as any)?.data?.newTransactions ?? 0;
       Alert.alert(
         'Sync Complete',
-        newTxCount > 0 
+        newTxCount > 0
           ? `Found ${newTxCount} new transaction${newTxCount > 1 ? 's' : ''}.`
           : 'Your account is up to date.',
-        [{ text: 'OK' }]
+        [{ text: 'OK' }],
       );
     },
-    onError: (err) => {
-      Alert.alert('Sync Failed', isDemo ? 'Demo sync error' : getApiError(err));
-    },
+    onError: (err) => Alert.alert('Sync Failed', getApiError(err)),
   });
 
   const handleUnlinkAccount = (account: Account) => {
@@ -136,30 +61,16 @@ export default function AccountsScreen() {
       `Are you sure you want to remove ${account.institutionName} ${account.accountType} from Klak? This will also remove all associated transactions.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Unlink',
-          style: 'destructive',
-          onPress: () => unlinkAccount(account.id),
-        },
-      ]
+        { text: 'Unlink', style: 'destructive', onPress: () => unlinkAccount(account.id) },
+      ],
     );
   };
 
-  const handleSyncAccount = (account: Account) => {
-    syncAccount(account.id);
-  };
-
-  const onRefresh = React.useCallback(() => {
-    if (!isDemo) {
-      refetch();
-    }
-  }, [isDemo, refetch]);
-
-  if (isLoading && !isDemo) {
+  if (isLoading) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => safeBack('/settings')}>
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Linked Accounts</Text>
@@ -167,23 +78,18 @@ export default function AccountsScreen() {
         </View>
         <View style={styles.content}>
           {[0, 1, 2].map(i => (
-            <Skeleton
-              key={i}
-              width="100%"
-              height={120}
-              style={{ borderRadius: radius.xl, marginBottom: spacing[4] }}
-            />
+            <Skeleton key={i} width="100%" height={120} style={{ borderRadius: radius.xl, marginBottom: spacing[4] }} />
           ))}
         </View>
       </SafeAreaView>
     );
   }
 
-  if (isError && !isDemo) {
+  if (isError) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => safeBack('/settings')}>
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Linked Accounts</Text>
@@ -193,7 +99,7 @@ export default function AccountsScreen() {
           emoji="⚠️"
           title="Failed to load accounts"
           subtitle="Pull down to retry"
-          action={{ label: 'Try Again', onPress: refetch }}
+          action={{ label: 'Try Again', onPress: () => refetch() }}
         />
       </SafeAreaView>
     );
@@ -202,7 +108,7 @@ export default function AccountsScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => safeBack('/settings')}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Linked Accounts</Text>
@@ -211,38 +117,25 @@ export default function AccountsScreen() {
         </TouchableOpacity>
       </View>
 
-      {isDemo && (
-        <View style={[styles.demoBanner]}>
-          <Text style={styles.demoText}>📱 Demo Mode - Test unlinking and sync features</Text>
-        </View>
-      )}
-
-      {displayAccounts.length === 0 ? (
+      {accounts.length === 0 ? (
         <EmptyState
           emoji="🏦"
           title="No accounts linked"
           subtitle="Connect your bank account to start tracking your finances"
-          action={{
-            label: 'Link Account',
-            onPress: () => router.push('/accounts/link'),
-          }}
+          action={{ label: 'Link Account', onPress: () => router.push('/accounts/link') }}
         />
       ) : (
         <ScrollView
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl
-              refreshing={false}
-              onRefresh={onRefresh}
-              tintColor={colors.klakGreen}
-            />
+            <RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.klakGreen} />
           }
         >
-          {displayAccounts.map((account: any) => {
+          {accounts.map((account: Account) => {
             const isActive = account.isActive !== false;
             const syncDateStr = formatTxDate(account.lastSyncedAt);
-            
+
             return (
               <View key={account.id} style={styles.accountCard}>
                 <View style={styles.accountHeader}>
@@ -251,19 +144,17 @@ export default function AccountsScreen() {
                       {account.institutionName.slice(0, 2).toUpperCase()}
                     </Text>
                   </View>
-                  
+
                   <View style={styles.accountMeta}>
                     <Text style={styles.accountName}>{account.institutionName}</Text>
                     <Text style={styles.accountType}>{account.accountType} Account</Text>
                   </View>
 
-                  <View style={[styles.statusBadge, { 
+                  <View style={[styles.statusBadge, {
                     backgroundColor: isActive ? colors.klakGreenGlow : colors.alertRedDim,
                     borderColor: isActive ? colors.klakGreen + '30' : colors.alertRed + '30',
                   }]}>
-                    <Text style={[styles.statusText, {
-                      color: isActive ? colors.klakGreen : colors.alertRed,
-                    }]}>
+                    <Text style={[styles.statusText, { color: isActive ? colors.klakGreen : colors.alertRed }]}>
                       {isActive ? 'Active' : 'Inactive'}
                     </Text>
                   </View>
@@ -272,13 +163,9 @@ export default function AccountsScreen() {
                 <View style={styles.accountStats}>
                   <View style={styles.statCol}>
                     <Text style={styles.statLabel}>Balance</Text>
-                    <Text style={styles.statValue}>
-                      {formatNairaFull(account.balanceCents)}
-                    </Text>
+                    <Text style={styles.statValue}>{formatNairaFull(account.balanceCents)}</Text>
                   </View>
-                  
                   <View style={styles.statSep} />
-                  
                   <View style={styles.statCol}>
                     <Text style={styles.statLabel}>Last Sync</Text>
                     <Text style={styles.statValue}>{syncDateStr}</Text>
@@ -288,13 +175,12 @@ export default function AccountsScreen() {
                 <View style={styles.accountActions}>
                   <Button
                     label={isSyncing ? 'Syncing...' : 'Sync Now'}
-                    onPress={() => handleSyncAccount(account)}
+                    onPress={() => syncAccount(account.id)}
                     loading={isSyncing}
                     variant="outline"
                     size="sm"
                     style={{ flex: 1 }}
                   />
-                  
                   <Button
                     label={isUnlinking ? 'Unlinking...' : 'Unlink'}
                     onPress={() => handleUnlinkAccount(account)}
@@ -322,7 +208,7 @@ export default function AccountsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -391,9 +277,7 @@ const styles = StyleSheet.create({
     fontSize: typography.size.base,
     color: colors.klakGreen,
   },
-  accountMeta: {
-    flex: 1,
-  },
+  accountMeta: { flex: 1 },
   accountName: {
     fontFamily: typography.family.bold,
     fontSize: typography.size.base,
@@ -425,10 +309,7 @@ const styles = StyleSheet.create({
     padding: spacing[4],
     marginBottom: spacing[4],
   },
-  statCol: {
-    flex: 1,
-    alignItems: 'center',
-  },
+  statCol: { flex: 1, alignItems: 'center' },
   statLabel: {
     fontFamily: typography.family.regular,
     fontSize: typography.size.xs,
@@ -441,16 +322,9 @@ const styles = StyleSheet.create({
     fontSize: typography.size.sm,
     color: colors.white,
   },
-  statSep: {
-    width: 1,
-    height: 32,
-    backgroundColor: colors.border,
-  },
+  statSep: { width: 1, height: 32, backgroundColor: colors.border },
 
-  accountActions: {
-    flexDirection: 'row',
-    gap: spacing[3],
-  },
+  accountActions: { flexDirection: 'row', gap: spacing[3] },
 
   footerNote: {
     backgroundColor: colors.surface,
@@ -465,21 +339,5 @@ const styles = StyleSheet.create({
     fontSize: typography.size.sm,
     color: colors.textSec,
     lineHeight: 20,
-  },
-
-  demoBanner: {
-    backgroundColor: colors.klakGreenGlow,
-    borderRadius: radius.lg,
-    padding: spacing[4],
-    marginHorizontal: spacing[5],
-    marginBottom: spacing[4],
-    borderLeftWidth: 3,
-    borderLeftColor: colors.klakGreen,
-  },
-  demoText: {
-    fontFamily: typography.family.semibold,
-    fontSize: typography.size.sm,
-    color: colors.klakGreen,
-    textAlign: 'center',
   },
 });

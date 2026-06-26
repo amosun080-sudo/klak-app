@@ -9,7 +9,7 @@ import { transactionsApi, getApiError } from '../../../src/lib/api/index';
 import { colors } from '../../../src/theme/colors';
 import { typography, spacing, radius, shadow } from '../../../src/theme/index';
 import { Button, Card, Skeleton } from '../../../src/components/layout/index';
-import { formatNairaFull, formatTxDate, getCategoryById, SYSTEM_CATEGORIES } from '../../../src/utils/index';
+import { formatNairaFull, formatTxDate, getCategoryById, SYSTEM_CATEGORIES, safeBack } from '../../../src/utils/index';
 
 export default function TransactionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -57,7 +57,7 @@ export default function TransactionDetailScreen() {
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Back */}
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => safeBack('/(tabs)/transactions/index')} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
 

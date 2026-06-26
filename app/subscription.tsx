@@ -8,6 +8,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { subscriptionsApi, getApiError } from '../src/lib/api/index';
 import { useAuthStore } from '../src/store/auth';
+import { safeBack } from '../src/utils/index';
 import { colors } from '../src/theme/colors';
 import { typography, spacing, radius, shadow } from '../src/theme/index';
 import { Button, Skeleton } from '../src/components/layout/index';
@@ -96,7 +97,7 @@ export default function SubscriptionScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => safeBack('/settings')}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Plans</Text>

@@ -9,8 +9,9 @@ import {
   DMSans_500Medium,
   DMSans_700Bold,
 } from '@expo-google-fonts/dm-sans';
+import { Platform } from 'react-native';
 import { useAuthStore } from '../src/store/auth';
-import { authApi, usersApi, healthApi } from '../src/lib/api/index';
+import { authApi, usersApi, healthApi, getApiError } from '../src/lib/api/index';
 import { getRefreshToken, setRefreshToken, clearRefreshToken } from '../src/lib/api';
 import { shouldRetry, getRetryDelay } from '../src/lib/retryStrategy';
 import { ErrorBoundary } from '../src/components/feedback/ErrorBoundary';
@@ -33,7 +34,7 @@ const queryClient = new QueryClient({
   },
 });
 
-const SESSION_RESTORE_TIMEOUT_MS = 3_000; // Reduced timeout for faster loading
+const SESSION_RESTORE_TIMEOUT_MS = 35_000; // Must exceed API timeout (30s) to avoid premature bail
 
 // Configure notification handling
 Notifications.setNotificationHandler({
@@ -45,11 +46,10 @@ Notifications.setNotificationHandler({
 });
 
 export default function RootLayout() {
-  const login        = useAuthStore(s => s.login);
-  const setLoading   = useAuthStore(s => s.setLoading);
-  const isLoading    = useAuthStore(s => s.isLoading);
-  const initializeFcm = useAuthStore(s => s.initializeFcm);
-  const accessToken  = useAuthStore(s => s.accessToken);
+  const login       = useAuthStore(s => s.login);
+  const setLoading  = useAuthStore(s => s.setLoading);
+  const isLoading   = useAuthStore(s => s.isLoading);
+  const accessToken = useAuthStore(s => s.accessToken);
 
   const [isOnline, setIsOnline] = useState(true);
 
@@ -91,32 +91,42 @@ export default function RootLayout() {
 
     const timeoutId = setTimeout(() => {
       if (!cancelled) {
+        console.warn('[Session] Restore timed out after', SESSION_RESTORE_TIMEOUT_MS, 'ms — clearing token and showing auth');
         clearRefreshToken().catch(() => {});
         setLoading(false);
       }
     }, SESSION_RESTORE_TIMEOUT_MS);
 
     const restoreSession = async () => {
+      console.log('[Session] Starting restore...');
       try {
         const rt = await getRefreshToken();
         if (!rt) {
+          console.log('[Session] No refresh token found — showing auth screen');
           if (!cancelled) setLoading(false);
           clearTimeout(timeoutId);
           return;
         }
 
+        console.log('[Session] Refresh token found — attempting refresh...');
         const { data: refreshData } = await authApi.refresh(rt);
-        // Backend returns { accessToken, refreshToken } directly
-        const tokens = { accessToken: refreshData.accessToken, refreshToken: refreshData.refreshToken };
         await setRefreshToken(refreshData.refreshToken);
+        useAuthStore.getState().setAccessToken(refreshData.accessToken);
+        console.log('[Session] Token refreshed — fetching user profile...');
 
-        // Backend returns User directly
         const { data: userData } = await usersApi.me();
+        console.log('[Session] Restore complete — logged in as', (userData as any)?.email ?? (userData as any)?.phone ?? 'unknown');
 
         if (!cancelled) {
-          login(tokens, userData as any);
+          login({ accessToken: refreshData.accessToken, refreshToken: refreshData.refreshToken }, userData as any);
         }
-      } catch {
+      } catch (err: any) {
+        console.error('[Session] Restore failed:', err?.message ?? err);
+        if (err?.response) {
+          console.error('[Session] Response status:', err.response.status, '| data:', err.response.data);
+        } else if (err?.code) {
+          console.error('[Session] Error code:', err.code);
+        }
         await clearRefreshToken().catch(() => {});
         if (!cancelled) setLoading(false);
       } finally {
@@ -134,12 +144,37 @@ export default function RootLayout() {
 
   // ── Initialize FCM after authentication ────────────────────────────────────
   useEffect(() => {
-    if (accessToken && !isLoading) {
-      initializeFcm().catch(err => 
-        console.error('FCM initialization failed:', err)
-      );
-    }
-  }, [accessToken, isLoading, initializeFcm]);
+    if (!accessToken || isLoading || Platform.OS === 'web') return;
+
+    let subscription: Notifications.Subscription | null = null;
+
+    const init = async () => {
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== 'granted') {
+          console.log('FCM: Notification permissions not granted');
+          return;
+        }
+        const { data: pushToken } = await Notifications.getExpoPushTokenAsync({
+          projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID,
+        });
+        console.log('FCM: Got push token:', pushToken);
+        await usersApi.updateFcmToken(pushToken).catch(err =>
+          console.error('FCM: Failed to update token on backend:', getApiError(err))
+        );
+        subscription = Notifications.addPushTokenListener(({ data: newToken }) => {
+          usersApi.updateFcmToken(newToken).catch(err =>
+            console.error('FCM: Failed to update refreshed token:', getApiError(err))
+          );
+        });
+      } catch (err) {
+        console.error('FCM: Initialization failed:', err);
+      }
+    };
+
+    init();
+    return () => { subscription?.remove(); };
+  }, [accessToken, isLoading]);
 
   // ── Handle notification responses ─────────────────────────────────────────
   useEffect(() => {
@@ -165,8 +200,8 @@ export default function RootLayout() {
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1,   duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 0.5, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1,   duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(pulseAnim, { toValue: 0.5, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: Platform.OS !== 'web' }),
       ])
     ).start();
     return () => pulseAnim.stopAnimation();

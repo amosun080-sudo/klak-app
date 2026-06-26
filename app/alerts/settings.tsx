@@ -9,6 +9,7 @@ import { alertsApi, getApiError } from '../../src/lib/api/index';
 import { useAuthStore } from '../../src/store/auth';
 import { colors } from '../../src/theme/colors';
 import { typography, spacing, radius } from '../../src/theme/index';import { Card, Skeleton } from '../../src/components/layout/index';
+import { safeBack } from '../../src/utils/index';
 
 export default function AlertSettingsScreen() {
   const user = useAuthStore(s => s.user);
@@ -52,7 +53,7 @@ export default function AlertSettingsScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => safeBack('/alerts')}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Alert settings</Text>
