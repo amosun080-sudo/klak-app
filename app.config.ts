@@ -39,6 +39,8 @@ const config: ExpoConfig = {
   plugins: [
     'expo-router',
     'expo-secure-store',
+    'expo-font',
+    'expo-web-browser',
     [
       'expo-notifications',
       {
@@ -55,8 +57,7 @@ const config: ExpoConfig = {
     monoPublicKey:  process.env.EXPO_PUBLIC_MONO_PUBLIC_KEY,
     googleClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
     eas: {
-      // Replace with your actual EAS project ID from: npx eas init
-      projectId: process.env.EAS_PROJECT_ID ?? 'YOUR_EAS_PROJECT_ID',
+      projectId: '9a4b8e3d-7b71-46af-9f8e-5659b90342f8',
     },
   },
 };

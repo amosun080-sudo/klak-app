@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
     ...shadow.card,
   },
   glassCard: {
-    backgroundColor: colors.glass,
+    backgroundColor: colors.surfaceAlt,
     borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: colors.glassBorder,

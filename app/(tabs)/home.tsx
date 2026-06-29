@@ -310,7 +310,6 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing[5],
     marginBottom: spacing[5],
     borderRadius: radius['2xl'],
-    overflow: 'hidden',
     ...shadow.green,
   },
   balanceCard: {
@@ -480,7 +479,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: colors.glassBorder,
-    overflow: 'hidden',
     ...shadow.card,
   },
   txRow: {

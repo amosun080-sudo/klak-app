@@ -145,7 +145,7 @@ export const accountsApi = {
   },
 
   sync: async (id: string) => {
-    // Clear cache after syncing (new transactions might be available)
+    await cacheManager.clear('accounts');
     await cacheManager.clear('balance');
     return api.post<{ message: string; newTransactions: number }>(`/accounts/${id}/sync`);
   },

@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../../src/theme/colors';
 import { typography, spacing } from '../../src/theme/index';
+import { useBackgroundSync } from '../../src/hooks/useBackgroundSync';
 
 // ── Measurements ──────────────────────────────────────────────────────────────
 export const TAB_BAR_HEIGHT        = 68;
@@ -115,6 +116,8 @@ export default function TabsLayout() {
   const insets      = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, TAB_BAR_BOTTOM_OFFSET);
 
+  useBackgroundSync();
+
   return (
     <Tabs
       screenOptions={{
@@ -137,7 +140,6 @@ export default function TabsLayout() {
           shadowRadius:    24,
           shadowOffset:    { width: 0, height: 8 },
           elevation:       12,
-          overflow:        'hidden',
           paddingBottom:   0,
         },
         tabBarActiveTintColor:   colors.klakGreen,

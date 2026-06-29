@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, SafeAreaView,
-  TouchableOpacity, Alert, KeyboardAvoidingView, Platform,
+  TouchableOpacity, Alert, KeyboardAvoidingView, Platform, TextInput,
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -23,9 +23,14 @@ export default function CreateBudgetScreen() {
   const { month, year } = currentMonthYear();
   const isEdit = !!id;
 
-  const [selectedCat, setSelectedCat] = useState<string>('');
-  const [limitCents, setLimitCents]   = useState(0);
+  const [selectedCat, setSelectedCat]   = useState<string>('');
+  const [customCatName, setCustomCatName] = useState('');
+  const [limitCents, setLimitCents]     = useState(0);
   const [errors, setErrors]             = useState<Record<string, string>>({});
+
+  const isOther = selectedCat === 'other';
+  // What we actually send to the backend: custom name for "other", slug for everything else
+  const effectiveCategoryId = isOther ? customCatName.trim() : selectedCat;
 
   useQuery({
     queryKey: ['budget', id],
@@ -38,11 +43,11 @@ export default function CreateBudgetScreen() {
   });
 
   const { mutate: create, isPending: creating } = useMutation({
-    mutationFn: () => budgetsApi.create({ 
-      categoryId: selectedCat, 
-      limitNaira: limitCents / 100, // Convert kobo to naira
-      month, 
-      year 
+    mutationFn: () => budgetsApi.create({
+      categoryId: effectiveCategoryId,
+      limitNaira: limitCents / 100,
+      month,
+      year,
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['budgets'] }); safeBack('/(tabs)/budgets/index'); },
     onError: (err) => setErrors({ form: getApiError(err) }),
@@ -68,13 +73,16 @@ export default function CreateBudgetScreen() {
 
   const validateForm = () => {
     const validationResults = validateFields(
-      { selectedCat, limitCents: limitCents / 100 }, // Convert to naira for validation
+      { selectedCat, limitCents: limitCents / 100 },
       {
-        selectedCat: (value) => !value ? 'Please choose a category' : true,
+        selectedCat: (value) => {
+          if (!value) return 'Please choose a category';
+          if (value === 'other' && !customCatName.trim()) return 'Please enter a category name';
+          return true;
+        },
         limitCents: validation.budgetLimit,
       }
     );
-    
     setErrors(validationResults);
     return isFormValid(validationResults);
   };
@@ -115,8 +123,9 @@ export default function CreateBudgetScreen() {
                   return (
                     <TouchableOpacity
                       key={cat.id}
-                      onPress={() => { 
-                        setSelectedCat(cat.id); 
+                      onPress={() => {
+                        setSelectedCat(cat.id);
+                        if (cat.id !== 'other') setCustomCatName('');
                         setErrors(prev => ({ ...prev, selectedCat: '' }));
                       }}
                       style={[
@@ -141,6 +150,30 @@ export default function CreateBudgetScreen() {
               </View>
               {errors.selectedCat && (
                 <Text style={styles.fieldError}>⚠ {errors.selectedCat}</Text>
+              )}
+
+              {/* Custom name input — shown only when "Other" is selected */}
+              {isOther && (
+                <View style={styles.customCatWrap}>
+                  <Text style={styles.customCatLabel}>Category name</Text>
+                  <TextInput
+                    style={[
+                      styles.customCatInput,
+                      errors.selectedCat ? styles.customCatInputError : null,
+                    ]}
+                    value={customCatName}
+                    onChangeText={(t) => {
+                      setCustomCatName(t);
+                      setErrors(prev => ({ ...prev, selectedCat: '' }));
+                    }}
+                    placeholder="e.g. Rent, Gym, Pet care…"
+                    placeholderTextColor={colors.textMuted}
+                    autoFocus
+                    autoCapitalize="words"
+                    returnKeyType="done"
+                    maxLength={40}
+                  />
+                </View>
               )}
             </>
           )}
@@ -277,6 +310,34 @@ const styles = StyleSheet.create({
     color: colors.background,
     fontFamily: typography.family.bold,
     lineHeight: 14,
+  },
+
+  // Custom category input
+  customCatWrap: {
+    marginTop: spacing[2],
+    marginBottom: spacing[3],
+  },
+  customCatLabel: {
+    fontFamily: typography.family.semibold,
+    fontSize: typography.size.xs,
+    color: colors.textSec,
+    letterSpacing: 0.8,
+    marginBottom: spacing[2],
+    textTransform: 'uppercase',
+  },
+  customCatInput: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.glassBorder,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[4],
+    fontFamily: typography.family.semibold,
+    fontSize: typography.size.base,
+    color: colors.white,
+  },
+  customCatInputError: {
+    borderColor: colors.alertRed,
   },
 
   // Field error

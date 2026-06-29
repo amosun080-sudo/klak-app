@@ -32,14 +32,16 @@ export interface TokenPair {
 export type AccountType = 'SAVINGS' | 'CURRENT' | 'WALLET';
 
 export interface Account {
-  id:              string;
-  institutionName: string;
-  accountName:     string;
-  accountType:     AccountType;
-  balanceCents:    number;      // stored in kobo
-  currency:        string;
-  lastSyncedAt:    string;
-  isActive?:       boolean;
+  id:               string;
+  institutionName:  string;
+  accountName:      string;
+  accountNumber?:   string;
+  accountType:      AccountType;
+  balanceCents:     number;      // stored in kobo
+  currency:         string;
+  balanceUpdatedAt?: string;     // field name the backend actually sends
+  lastSyncedAt?:    string;      // legacy alias
+  isActive?:        boolean;
 }
 
 /** GET /accounts/balance */

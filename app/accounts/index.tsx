@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, SafeAreaView, ScrollView,
-  TouchableOpacity, Alert, RefreshControl,
+  TouchableOpacity, Alert, RefreshControl, Modal, Pressable,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
@@ -12,8 +12,108 @@ import { Button, Skeleton, EmptyState } from '../../src/components/layout/index'
 import { formatNairaFull, formatTxDate, safeBack } from '../../src/utils/index';
 import type { Account } from '../../src/types/models';
 
+// ── Confirm Modal ─────────────────────────────────────────────────────────────
+function ConfirmModal({
+  visible,
+  title,
+  message,
+  confirmLabel = 'Confirm',
+  onConfirm,
+  onCancel,
+}: {
+  visible:       boolean;
+  title:         string;
+  message:       string;
+  confirmLabel?: string;
+  onConfirm:     () => void;
+  onCancel:      () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <Pressable style={cm.overlay} onPress={onCancel}>
+        <Pressable style={cm.card} onPress={() => {}}>
+          <Text style={cm.title}>{title}</Text>
+          <Text style={cm.message}>{message}</Text>
+          <View style={cm.actions}>
+            <TouchableOpacity style={cm.cancelBtn} onPress={onCancel} activeOpacity={0.75}>
+              <Text style={cm.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={cm.confirmBtn} onPress={onConfirm} activeOpacity={0.75}>
+              <Text style={cm.confirmText}>{confirmLabel}</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const cm = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing[6],
+  },
+  card: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: colors.surface,
+    borderRadius: radius['2xl'],
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    padding: spacing[6],
+    gap: spacing[4],
+  },
+  title: {
+    fontFamily: typography.family.extrabold,
+    fontSize: typography.size.lg,
+    color: colors.white,
+  },
+  message: {
+    fontFamily: typography.family.regular,
+    fontSize: typography.size.sm,
+    color: colors.textSec,
+    lineHeight: 21,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: spacing[3],
+    marginTop: spacing[2],
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: spacing[3],
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    alignItems: 'center',
+  },
+  cancelText: {
+    fontFamily: typography.family.semibold,
+    fontSize: typography.size.base,
+    color: colors.textSec,
+  },
+  confirmBtn: {
+    flex: 1,
+    paddingVertical: spacing[3],
+    borderRadius: radius.full,
+    backgroundColor: 'rgba(255,90,90,0.15)',
+    borderWidth: 1,
+    borderColor: colors.alertRed + '50',
+    alignItems: 'center',
+  },
+  confirmText: {
+    fontFamily: typography.family.bold,
+    fontSize: typography.size.base,
+    color: colors.alertRed,
+  },
+});
+
 export default function AccountsScreen() {
   const qc = useQueryClient();
+  const [confirmAccount, setConfirmAccount] = useState<Account | null>(null);
 
   const {
     data: accounts = [],
@@ -37,34 +137,19 @@ export default function AccountsScreen() {
     onError: (err) => Alert.alert('Unlink Failed', getApiError(err)),
   });
 
-  const { mutate: syncAccount, isPending: isSyncing } = useMutation({
+  const { mutate: syncAccount, isPending: isSyncing, variables: syncingId } = useMutation({
     mutationFn: (accountId: string) => accountsApi.sync(accountId),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['accounts'] });
       qc.invalidateQueries({ queryKey: ['balance'] });
       qc.invalidateQueries({ queryKey: ['transactions'] });
-      const newTxCount = (data as any)?.data?.newTransactions ?? 0;
-      Alert.alert(
-        'Sync Complete',
-        newTxCount > 0
-          ? `Found ${newTxCount} new transaction${newTxCount > 1 ? 's' : ''}.`
-          : 'Your account is up to date.',
-        [{ text: 'OK' }],
-      );
+      const msg = (data as any)?.data?.message ?? 'Already up to date';
+      Alert.alert('Sync Complete', msg, [{ text: 'OK' }]);
     },
     onError: (err) => Alert.alert('Sync Failed', getApiError(err)),
   });
 
-  const handleUnlinkAccount = (account: Account) => {
-    Alert.alert(
-      'Unlink Account',
-      `Are you sure you want to remove ${account.institutionName} ${account.accountType} from Klak? This will also remove all associated transactions.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Unlink', style: 'destructive', onPress: () => unlinkAccount(account.id) },
-      ],
-    );
-  };
+  const handleUnlinkAccount = (account: Account) => setConfirmAccount(account);
 
   if (isLoading) {
     return (
@@ -134,7 +219,8 @@ export default function AccountsScreen() {
         >
           {accounts.map((account: Account) => {
             const isActive = account.isActive !== false;
-            const syncDateStr = formatTxDate(account.lastSyncedAt);
+            const syncDate = account.balanceUpdatedAt ?? account.lastSyncedAt;
+            const syncDateStr = syncDate ? formatTxDate(syncDate) : 'Never';
 
             return (
               <View key={account.id} style={styles.accountCard}>
@@ -174,9 +260,9 @@ export default function AccountsScreen() {
 
                 <View style={styles.accountActions}>
                   <Button
-                    label={isSyncing ? 'Syncing...' : 'Sync Now'}
+                    label={isSyncing && syncingId === account.id ? 'Syncing...' : 'Sync Now'}
                     onPress={() => syncAccount(account.id)}
-                    loading={isSyncing}
+                    loading={isSyncing && syncingId === account.id}
                     variant="outline"
                     size="sm"
                     style={{ flex: 1 }}
@@ -202,6 +288,22 @@ export default function AccountsScreen() {
           </View>
         </ScrollView>
       )}
+
+      <ConfirmModal
+        visible={!!confirmAccount}
+        title="Unlink Account"
+        message={
+          confirmAccount
+            ? `Remove ${confirmAccount.institutionName} ${confirmAccount.accountType} account from Klak? All associated transactions will also be removed.`
+            : ''
+        }
+        confirmLabel="Unlink"
+        onConfirm={() => {
+          if (confirmAccount) unlinkAccount(confirmAccount.id);
+          setConfirmAccount(null);
+        }}
+        onCancel={() => setConfirmAccount(null)}
+      />
     </SafeAreaView>
   );
 }

@@ -3,6 +3,7 @@ import { Slot } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { View, Text, StyleSheet, Animated, Easing, TouchableOpacity } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import {
   useFonts,
   DMSans_400Regular,
@@ -41,6 +42,8 @@ const SESSION_RESTORE_TIMEOUT_MS = 35_000; // Must exceed API timeout (30s) to a
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
@@ -158,9 +161,19 @@ export default function RootLayout() {
           console.log('FCM: Notification permissions not granted');
           return;
         }
-        const { data: pushToken } = await Notifications.getExpoPushTokenAsync({
-          projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID,
-        });
+        // Resolve project ID: Constants.easConfig is set automatically when
+        // running inside EAS / a registered dev build; extra.eas.projectId
+        // is the manual fallback from app.config.ts.
+        const projectId =
+          Constants.easConfig?.projectId ??
+          (Constants.expoConfig?.extra as any)?.eas?.projectId;
+
+        if (!projectId || projectId === 'YOUR_EAS_PROJECT_ID') {
+          console.log('FCM: No EAS projectId configured — push notifications disabled. Run `npx eas init` to enable.');
+          return;
+        }
+
+        const { data: pushToken } = await Notifications.getExpoPushTokenAsync({ projectId });
         console.log('FCM: Got push token:', pushToken);
         await usersApi.updateFcmToken(pushToken).catch(err =>
           console.error('FCM: Failed to update token on backend:', getApiError(err))
