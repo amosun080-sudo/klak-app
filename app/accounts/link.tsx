@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, SafeAreaView,
-  TouchableOpacity, ActivityIndicator, Alert,
+  TouchableOpacity, ActivityIndicator, Alert, Platform,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
@@ -14,6 +14,112 @@ import { Button } from '../../src/components/layout/index';
 import { safeBack } from '../../src/utils/index';
 
 const MONO_PUBLIC_KEY = process.env.EXPO_PUBLIC_MONO_PUBLIC_KEY ?? '';
+
+// For Plaid on web: render an iframe with a postMessage shim
+function EmbedView({ html, onMessage }: { html: string; onMessage: (e: any) => void }) {
+  const stableOnMessage = useRef(onMessage);
+  useEffect(() => { stableOnMessage.current = onMessage; }, [onMessage]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handler = (event: MessageEvent) => {
+      if (typeof event.data === 'string') {
+        stableOnMessage.current({ nativeEvent: { data: event.data } });
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  if (Platform.OS === 'web') {
+    const shimmed = html.replace(
+      'window.ReactNativeWebView.postMessage',
+      'window.parent.postMessage',
+    );
+    return (
+      <iframe
+        srcDoc={shimmed}
+        style={{ flex: 1, border: 'none', width: '100%', height: '100%' } as any}
+      />
+    );
+  }
+  return (
+    <WebView source={{ html }} onMessage={onMessage} javaScriptEnabled domStorageEnabled style={{ flex: 1 }} />
+  );
+}
+
+// On web, open Mono Connect in a popup window (its own clean browser context).
+// Embedding it in the React Native Web DOM breaks the SDK's internal DOM manipulation.
+function WebMonoConnect({
+  publicKey,
+  onSuccess,
+  onClose,
+}: {
+  publicKey: string;
+  onSuccess: (code: string) => void;
+  onClose: () => void;
+}) {
+  const [blocked, setBlocked] = React.useState(false);
+
+  const openPopup = useCallback(() => {
+    const url = `/mono-connect.html?key=${encodeURIComponent(publicKey)}`;
+    const popup = window.open(url, 'mono-connect', 'width=480,height=700,scrollbars=yes,resizable=yes');
+    if (!popup || popup.closed) {
+      setBlocked(true);
+      return;
+    }
+    setBlocked(false);
+
+    const handler = (event: MessageEvent) => {
+      try {
+        const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (msg?.type === 'mono_success') { onSuccess(msg.code); cleanup(); }
+        else if (msg?.type === 'mono_close') { onClose(); cleanup(); }
+      } catch (_) {}
+    };
+
+    const interval = setInterval(() => {
+      if (popup.closed) { onClose(); cleanup(); }
+    }, 500);
+
+    function cleanup() {
+      window.removeEventListener('message', handler);
+      clearInterval(interval);
+      try { popup.close(); } catch (_) {}
+    }
+
+    window.addEventListener('message', handler);
+  }, [publicKey, onSuccess, onClose]);
+
+  useEffect(() => {
+    openPopup();
+  }, []);
+
+  if (blocked) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0D1117', padding: 24 }}>
+        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Popup blocked</Text>
+        <Text style={{ color: '#888', fontSize: 14, textAlign: 'center', marginBottom: 24 }}>
+          Your browser blocked the bank connection popup. Please allow popups for this site and try again.
+        </Text>
+        <TouchableOpacity onPress={openPopup} style={{ backgroundColor: '#1B4FA8', borderRadius: 8, paddingHorizontal: 24, paddingVertical: 12, marginBottom: 12 }}>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Try again</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onClose}>
+          <Text style={{ color: '#888', fontSize: 14 }}>Cancel</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0D1117' }}>
+      <ActivityIndicator size="large" color="#1B4FA8" />
+      <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700', marginTop: 16 }}>Bank connection opened</Text>
+      <Text style={{ color: '#888', fontSize: 14, marginTop: 8 }}>Complete the flow in the popup window</Text>
+    </View>
+  );
+}
 
 // Plaid Link HTML widget
 const getPlaidHTML = (linkToken: string) => `
@@ -76,23 +182,27 @@ const getMonoHTML = (publicKey: string) => `
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://connect.withmono.com/connect.js"></script>
   <style>
-    body { margin: 0; background: #FAFAF7; font-family: sans-serif; }
+    body { margin: 0; background: #0D1117; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; }
     #btn {
-      margin: 48px auto; display: block;
       background: #1B4FA8; color: white;
       border: none; border-radius: 12px;
       padding: 18px 40px; font-size: 16px;
       font-weight: 700; cursor: pointer;
-      width: calc(100% - 40px);
+      width: calc(100% - 40px); max-width: 320px;
     }
+    #status { color: #888; font-size: 14px; text-align: center; margin-top: 12px; }
   </style>
 </head>
 <body>
-  <button id="btn" onclick="openMono()">Connect your bank</button>
+  <div>
+    <button id="btn" onclick="openMono()" disabled>Loading…</button>
+    <p id="status">Preparing bank connection…</p>
+  </div>
   <script>
     function openMono() {
+      document.getElementById('btn').disabled = true;
+      document.getElementById('status').textContent = 'Opening bank connection…';
       const connect = new Connect({
         key: "${publicKey}",
         onSuccess: function(data) {
@@ -105,10 +215,24 @@ const getMonoHTML = (publicKey: string) => `
           window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'event', event: eventName }));
         }
       });
+      connect.setup();
       connect.open();
     }
-    // Auto-open on load
-    window.onload = function() { setTimeout(openMono, 500); }
+    // Load script dynamically so we know exactly when it's ready
+    var s = document.createElement('script');
+    s.src = 'https://connect.withmono.com/connect.js';
+    s.onload = function() {
+      var btn = document.getElementById('btn');
+      btn.disabled = false;
+      btn.textContent = 'Connect your bank';
+      document.getElementById('status').textContent = '';
+      // Auto-open once script is confirmed loaded
+      openMono();
+    };
+    s.onerror = function() {
+      document.getElementById('status').textContent = 'Failed to load widget. Check your connection.';
+    };
+    document.head.appendChild(s);
   </script>
 </body>
 </html>
@@ -331,6 +455,12 @@ export default function LinkAccountScreen() {
             <ActivityIndicator size="large" color={colors.klakBlue} />
             <Text style={styles.loadingText}>Linking your account…</Text>
           </View>
+        ) : Platform.OS === 'web' ? (
+          <WebMonoConnect
+            publicKey={MONO_PUBLIC_KEY}
+            onSuccess={(code) => linkMonoAccount(code)}
+            onClose={() => setStep('provider')}
+          />
         ) : (
           <WebView
             source={{ html: getMonoHTML(MONO_PUBLIC_KEY) }}
@@ -380,13 +510,7 @@ export default function LinkAccountScreen() {
             <Text style={styles.loadingText}>Linking your account…</Text>
           </View>
         ) : (
-          <WebView
-            source={{ html: getPlaidHTML(plaidData.linkToken) }}
-            onMessage={handlePlaidMessage}
-            javaScriptEnabled
-            domStorageEnabled
-            style={{ flex: 1 }}
-          />
+          <EmbedView html={getPlaidHTML(plaidData.linkToken)} onMessage={handlePlaidMessage} />
         )}
       </SafeAreaView>
     );

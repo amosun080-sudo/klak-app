@@ -32,17 +32,27 @@ function normaliseBudget(b: any): Budget {
 
 /** Normalise an Insight (adds legacy fields) */
 function normaliseInsight(i: any): Insight {
-  const priorityMap: Record<string, 'warning' | 'info' | 'success'> = {
-    HIGH:   'warning',
-    MEDIUM: 'info',
-    LOW:    'success',
+  const severityMap: Record<string, 'warning' | 'info' | 'success'> = {
+    // DB values (INFO / WARNING / CRITICAL)
+    INFO:     'info',
+    WARNING:  'warning',
+    CRITICAL: 'warning',
+    // Legacy priority values (HIGH / MEDIUM / LOW)
+    HIGH:     'warning',
+    MEDIUM:   'info',
+    LOW:      'success',
   };
   return {
     ...i,
-    body:         i.message,
-    severity:     priorityMap[i.priority] ?? 'info',
-    generatedAt:  i.createdAt,
-    emoji:        i.type === 'BUDGET_ALERT' ? '⚠️' : i.type === 'SPENDING_PATTERN' ? '📊' : i.type === 'SAVINGS_TIP' ? '💡' : '✨',
+    // DB field is `body`; legacy field was `message`
+    body:        i.body ?? i.message ?? '',
+    severity:    severityMap[i.severity ?? i.priority ?? ''] ?? 'info',
+    generatedAt: i.createdAt ?? i.generatedAt,
+    emoji:       i.emoji ?? (
+      i.type === 'BUDGET_ALERT'     ? '⚠️' :
+      i.type === 'SPENDING_PATTERN' ? '📊' :
+      i.type === 'SAVINGS_TIP'      ? '💡' : '✨'
+    ),
   };
 }
 
@@ -150,11 +160,13 @@ export const transactionsApi = {
     try {
       // First try: send search to backend
       const res = await api.get<{
-        data: any[];
+        transactions?: any[];
+        data?: any[];
         pagination: { page: number; limit: number; total: number };
       }>('/transactions', { params: search ? { ...backendParams, search } : backendParams });
-      
-      let transactions = (res.data.data ?? []).map(normaliseTransaction);
+
+      // Backend returns { transactions: [...] } — normalise to consistent shape
+      let transactions = (res.data.transactions ?? res.data.data ?? []).map(normaliseTransaction);
       
       return {
         ...res,
@@ -175,11 +187,12 @@ export const transactionsApi = {
         console.log('Backend search not supported, falling back to client-side filtering');
         
         const res = await api.get<{
-          data: any[];
+          transactions?: any[];
+          data?: any[];
           pagination: { page: number; limit: number; total: number };
         }>('/transactions', { params: backendParams });
-        
-        let transactions = (res.data.data ?? []).map(normaliseTransaction);
+
+        let transactions = (res.data.transactions ?? res.data.data ?? []).map(normaliseTransaction);
         
         // Client-side search implementation
         if (search) {
@@ -225,8 +238,23 @@ export const transactionsApi = {
       { categoryId },
     ),
 
-  summary: (params?: { startDate?: string; endDate?: string; month?: number; year?: number }) =>
-    api.get<TransactionSummary>('/transactions/summary', { params }),
+  summary: async (params?: { startDate?: string; endDate?: string; month?: number; year?: number }) => {
+    const res = await api.get<any>('/transactions/summary', { params });
+    const d = res.data ?? {};
+    // Backend returns naira values (totalSpendNaira, totalIncomeNaira)
+    // Frontend formatNaira() expects kobo — multiply by 100
+    const expenseKobo = Math.round((d.totalSpendNaira   ?? d.totalExpenses  ?? 0) * 100);
+    const incomeKobo  = Math.round((d.totalIncomeNaira  ?? d.totalIncome    ?? 0) * 100);
+    return {
+      ...res,
+      data: {
+        ...d,
+        totalExpenses: expenseKobo,
+        totalIncome:   incomeKobo,
+        netSavings:    incomeKobo - expenseKobo,
+      } as TransactionSummary,
+    };
+  },
 };
 
 // ── BUDGETS ───────────────────────────────────────────────────────────────────
@@ -337,6 +365,11 @@ export const subscriptionsApi = {
 
   me: () =>
     api.get<Subscription | null>('/subscriptions/me'),
+
+  verify: (reference: string) =>
+    api.post<{ currentPlan: string; subscription: any; planExpiresAt: string }>(
+      `/subscriptions/verify/${reference}`,
+    ),
 
   cancel: () =>
     api.post<{ message: string; accessUntil: string }>('/subscriptions/cancel'),

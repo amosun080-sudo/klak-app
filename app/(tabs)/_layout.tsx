@@ -1,60 +1,77 @@
 import React, { useEffect, useRef } from 'react';
 import { Tabs } from 'expo-router';
 import { Animated, View, Text, StyleSheet, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../../src/theme/colors';
 import { typography, spacing } from '../../src/theme/index';
 
 // ── Measurements ──────────────────────────────────────────────────────────────
-export const TAB_BAR_HEIGHT        = 64;
+export const TAB_BAR_HEIGHT        = 68;
 export const TAB_BAR_BOTTOM_OFFSET = Platform.OS === 'ios' ? 24 : 16;
 export const BOTTOM_TAB_PADDING    = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_OFFSET + 16;
 
-// ── Tab config — emoji icons, zero dependency ─────────────────────────────────
+// ── Tab config ────────────────────────────────────────────────────────────────
 const TAB_CONFIG = [
-  { name: 'home',                  label: 'Home',     emoji: '🏠' },
-  { name: 'transactions/index',    label: 'Activity', emoji: '💳' },
-  { name: 'budgets/index',         label: 'Budgets',  emoji: '📊' },
-  { name: 'insights',              label: 'Insights', emoji: '✨' },
+  {
+    name:         'home',
+    label:        'Home',
+    icon:         'home-outline'         as const,
+    iconFocused:  'home'                 as const,
+  },
+  {
+    name:         'transactions/index',
+    label:        'Activity',
+    icon:         'card-outline'         as const,
+    iconFocused:  'card'                 as const,
+  },
+  {
+    name:         'budgets/index',
+    label:        'Budgets',
+    icon:         'bar-chart-outline'    as const,
+    iconFocused:  'bar-chart'            as const,
+  },
+  {
+    name:         'insights',
+    label:        'Insights',
+    icon:         'bulb-outline'         as const,
+    iconFocused:  'bulb'                 as const,
+  },
 ] as const;
 
 // ── Tab icon component ────────────────────────────────────────────────────────
 function TabIcon({
-  emoji,
+  icon,
+  iconFocused,
   label,
   focused,
 }: {
-  emoji:   string;
-  label:   string;
-  focused: boolean;
+  icon:        React.ComponentProps<typeof Ionicons>['name'];
+  iconFocused: React.ComponentProps<typeof Ionicons>['name'];
+  label:       string;
+  focused:     boolean;
 }) {
-  const iconScale      = useRef(new Animated.Value(focused ? 1 : 0.82)).current;
-  const iconOpacity    = useRef(new Animated.Value(focused ? 1 : 0.5)).current;
-  const underlineScale = useRef(new Animated.Value(focused ? 1 : 0)).current;
-  const labelOpacity   = useRef(new Animated.Value(focused ? 1 : 0)).current;
+  const pillScale   = useRef(new Animated.Value(focused ? 1 : 0)).current;
+  const pillOpacity = useRef(new Animated.Value(focused ? 1 : 0)).current;
+  const iconScale   = useRef(new Animated.Value(focused ? 1 : 0.9)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.spring(iconScale, {
-        toValue: focused ? 1 : 0.82,
-        tension: 280,
-        friction: 16,
-        useNativeDriver: Platform.OS !== 'web',
-      }),
-      Animated.timing(iconOpacity, {
-        toValue: focused ? 1 : 0.5,
-        duration: 200,
-        useNativeDriver: Platform.OS !== 'web',
-      }),
-      Animated.spring(underlineScale, {
+      Animated.spring(pillScale, {
         toValue: focused ? 1 : 0,
         tension: 300,
-        friction: 18,
+        friction: 20,
         useNativeDriver: Platform.OS !== 'web',
       }),
-      Animated.timing(labelOpacity, {
+      Animated.timing(pillOpacity, {
         toValue: focused ? 1 : 0,
-        duration: 200,
+        duration: 180,
+        useNativeDriver: Platform.OS !== 'web',
+      }),
+      Animated.spring(iconScale, {
+        toValue: focused ? 1 : 0.9,
+        tension: 300,
+        friction: 20,
         useNativeDriver: Platform.OS !== 'web',
       }),
     ]).start();
@@ -62,28 +79,33 @@ function TabIcon({
 
   return (
     <View style={s.tabItem}>
-      {/* Emoji icon */}
+      {/* Pill highlight behind icon */}
       <Animated.View
         style={[
-          s.iconWrapper,
-          { transform: [{ scale: iconScale }], opacity: iconOpacity },
+          s.pill,
+          {
+            opacity: pillOpacity,
+            transform: [{ scaleX: pillScale }],
+          },
         ]}
-      >
-        <Text style={s.emoji}>{emoji}</Text>
-      </Animated.View>
-
-      {/* Green underline indicator */}
-      <Animated.View
-        style={[s.underline, { transform: [{ scaleX: underlineScale }] }]}
       />
 
-      {/* Label — only visible when focused */}
-      <Animated.Text
-        style={[s.label, { opacity: labelOpacity }]}
+      {/* Icon */}
+      <Animated.View style={{ transform: [{ scale: iconScale }] }}>
+        <Ionicons
+          name={focused ? iconFocused : icon}
+          size={22}
+          color={focused ? colors.klakGreen : colors.textMuted}
+        />
+      </Animated.View>
+
+      {/* Label — always visible */}
+      <Text
+        style={[s.label, focused && s.labelFocused]}
         numberOfLines={1}
       >
         {label}
-      </Animated.Text>
+      </Text>
     </View>
   );
 }
@@ -106,16 +128,17 @@ export default function TabsLayout() {
           bottom:          bottomInset,
           height:          TAB_BAR_HEIGHT,
           backgroundColor: colors.surfaceHigh,
-          borderRadius:    20,
+          borderRadius:    22,
           borderWidth:     1,
           borderColor:     colors.glassBorder,
           borderTopWidth:  0,
           shadowColor:     '#000',
-          shadowOpacity:   0.1,
-          shadowRadius:    20,
+          shadowOpacity:   0.15,
+          shadowRadius:    24,
           shadowOffset:    { width: 0, height: 8 },
           elevation:       12,
           overflow:        'hidden',
+          paddingBottom:   0,
         },
         tabBarActiveTintColor:   colors.klakGreen,
         tabBarInactiveTintColor: colors.textMuted,
@@ -129,7 +152,8 @@ export default function TabsLayout() {
             title: tab.label,
             tabBarIcon: ({ focused }) => (
               <TabIcon
-                emoji={tab.emoji}
+                icon={tab.icon}
+                iconFocused={tab.iconFocused}
                 label={tab.label}
                 focused={focused}
               />
@@ -138,7 +162,7 @@ export default function TabsLayout() {
         />
       ))}
 
-      {/* ── Hide all sub-routes from the tab bar ── */}
+      {/* ── Hide sub-routes from the tab bar ── */}
       <Tabs.Screen name="transactions/[id]"  options={{ href: null }} />
       <Tabs.Screen name="budgets/new"        options={{ href: null }} />
       <Tabs.Screen name="budgets/[id]"       options={{ href: null }} />
@@ -149,34 +173,29 @@ export default function TabsLayout() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   tabItem: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems:      'center',
+    justifyContent:  'center',
+    gap:             3,
     paddingVertical: spacing[2],
-    position: 'relative',
+    position:        'relative',
+    minWidth:        64,
   },
-  iconWrapper: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emoji: {
-    fontSize: 22,
-  },
-  underline: {
-    position: 'absolute',
-    bottom: 4,
-    width: 20,
-    height: 2.5,
-    borderRadius: 1.5,
-    backgroundColor: colors.klakGreen,
+  pill: {
+    position:        'absolute',
+    top:             6,
+    width:           44,
+    height:          34,
+    borderRadius:    12,
+    backgroundColor: colors.klakGreenGlow,
   },
   label: {
     fontFamily:    typography.family.medium,
     fontSize:      10,
+    color:         colors.textMuted,
+    letterSpacing: 0.2,
+  },
+  labelFocused: {
     color:         colors.klakGreen,
-    marginTop:     2,
-    letterSpacing: 0.3,
+    fontFamily:    typography.family.bold,
   },
 });

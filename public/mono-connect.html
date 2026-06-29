@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connect your bank</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0D1117; color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; flex-direction: column; gap: 16px;
+    }
+    .spinner {
+      width: 40px; height: 40px; border: 3px solid #1B4FA833;
+      border-top-color: #1B4FA8; border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    p { color: #888; font-size: 14px; }
+    .error { color: #ff6b6b; font-size: 14px; text-align: center; padding: 0 24px; }
+  </style>
+</head>
+<body>
+  <div class="spinner" id="spinner"></div>
+  <p id="status">Loading Mono Connect…</p>
+
+  <script>
+    var key = new URLSearchParams(location.search).get('key');
+
+    function notifyOpener(data) {
+      if (window.opener) {
+        window.opener.postMessage(JSON.stringify(data), '*');
+      }
+    }
+
+    if (!key) {
+      document.getElementById('spinner').style.display = 'none';
+      document.getElementById('status').className = 'error';
+      document.getElementById('status').textContent = 'Missing public key. Close this window.';
+    } else {
+      var s = document.createElement('script');
+      s.src = 'https://connect.withmono.com/connect.js';
+      s.onload = function () {
+        document.getElementById('spinner').style.display = 'none';
+        document.getElementById('status').textContent = '';
+        try {
+          var connect = new Connect({
+            key: key,
+            onSuccess: function (data) {
+              notifyOpener({ type: 'mono_success', code: data.code });
+              setTimeout(function () { window.close(); }, 300);
+            },
+            onClose: function () {
+              notifyOpener({ type: 'mono_close' });
+              setTimeout(function () { window.close(); }, 300);
+            },
+            onEvent: function () {}
+          });
+          connect.setup();
+          connect.open();
+        } catch (e) {
+          document.getElementById('status').className = 'error';
+          document.getElementById('status').textContent = e.message || 'Failed to open widget.';
+        }
+      };
+      s.onerror = function () {
+        document.getElementById('spinner').style.display = 'none';
+        document.getElementById('status').className = 'error';
+        document.getElementById('status').textContent = 'Could not load Mono widget. Check your connection.';
+      };
+      document.head.appendChild(s);
+    }
+  </script>
+</body>
+</html>

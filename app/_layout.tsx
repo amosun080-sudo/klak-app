@@ -13,6 +13,7 @@ import { Platform } from 'react-native';
 import { useAuthStore } from '../src/store/auth';
 import { authApi, usersApi, healthApi, getApiError } from '../src/lib/api/index';
 import { getRefreshToken, setRefreshToken, clearRefreshToken } from '../src/lib/api';
+import { cacheManager } from '../src/lib/cache';
 import { shouldRetry, getRetryDelay } from '../src/lib/retryStrategy';
 import { ErrorBoundary } from '../src/components/feedback/ErrorBoundary';
 import { colors } from '../src/theme/colors';
@@ -114,6 +115,8 @@ export default function RootLayout() {
         useAuthStore.getState().setAccessToken(refreshData.accessToken);
         console.log('[Session] Token refreshed — fetching user profile...');
 
+        // Always bypass cache on session restore so plan/profile changes are reflected immediately
+        await cacheManager.clear('user');
         const { data: userData } = await usersApi.me();
         console.log('[Session] Restore complete — logged in as', (userData as any)?.email ?? (userData as any)?.phone ?? 'unknown');
 

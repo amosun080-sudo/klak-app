@@ -48,7 +48,7 @@ export default function HomeScreen() {
   });
 
   const accounts = balanceData?.accounts ?? [];
-  const totalCents = balanceData?.totalCents ?? 0;
+  const totalCents = balanceData?.totalKobo ?? 0;
   const transactions = transactionsData?.data ?? [];
   const hasError = balError || txError;
 

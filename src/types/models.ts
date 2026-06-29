@@ -44,11 +44,10 @@ export interface Account {
 
 /** GET /accounts/balance */
 export interface BalanceResponse {
-  totalBalanceNaira: number;   // Naira units (not kobo)
+  totalBalanceNaira: number;
+  totalKobo:         number;
   accountCount:      number;
   currency:          string;
-  // convenience fields added client-side
-  totalCents?:       number;
   accounts?:         Account[];
 }
 

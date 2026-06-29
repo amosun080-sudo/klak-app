@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, SafeAreaView,
-  TouchableOpacity, Linking, Alert,
+  TouchableOpacity, Linking, Alert, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { subscriptionsApi, getApiError } from '../src/lib/api/index';
+import { cacheManager } from '../src/lib/cache';
 import { useAuthStore } from '../src/store/auth';
 import { safeBack } from '../src/utils/index';
 import { colors } from '../src/theme/colors';
@@ -61,7 +62,9 @@ const PLAN_SLUGS: PlanKey[] = ['FREE', 'PRO', 'PREMIUM'];
 
 export default function SubscriptionScreen() {
   const user        = useAuthStore(s => s.user);
+  const qc          = useQueryClient();
   const currentPlan: PlanKey = (user?.plan as PlanKey) ?? 'FREE';
+  const [awaitingPayment, setAwaitingPayment] = useState(false);
 
   // Plans returned directly as array (no wrapper)
   const { isLoading: plansLoading } = useQuery({
@@ -71,11 +74,62 @@ export default function SubscriptionScreen() {
     retry: 1,
   });
 
+  const handlePaystackSuccess = useCallback(async (reference?: string) => {
+    setAwaitingPayment(false);
+    if (reference) {
+      try {
+        const res = await subscriptionsApi.verify(reference);
+        const newPlan = (res.data as any)?.currentPlan;
+        if (newPlan) {
+          useAuthStore.getState().updateUser({ plan: newPlan });
+          // Bust the AsyncStorage user cache so session restore picks up the new plan
+          await cacheManager.clear('user');
+        }
+      } catch (_) {
+        // Verify failed — queries will still refresh below
+      }
+    }
+    qc.invalidateQueries({ queryKey: ['subscription'] });
+    qc.invalidateQueries({ queryKey: ['user'] });
+    Alert.alert('🎉 Plan activated!', 'Welcome to your new Klak plan. Enjoy the full experience.');
+  }, [qc]);
+
+  // Web: listen for postMessage from the payment-callback popup
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handler = (event: MessageEvent) => {
+      try {
+        const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (msg?.type === 'paystack_success') handlePaystackSuccess(msg.reference);
+      } catch (_) {}
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [handlePaystackSuccess]);
+
+  const openPaystack = useCallback((url: string) => {
+    if (Platform.OS === 'web') {
+      const popup = window.open(url, 'paystack-checkout', 'width=600,height=700,scrollbars=yes,resizable=yes');
+      if (!popup || popup.closed) {
+        // Popup blocked — fall back to redirect
+        window.location.href = url;
+        return;
+      }
+      setAwaitingPayment(true);
+      // Also poll in case popup blocker silently killed it
+      const interval = setInterval(() => {
+        if (popup.closed) { clearInterval(interval); setAwaitingPayment(false); }
+      }, 1000);
+    } else {
+      Linking.openURL(url);
+      setAwaitingPayment(true);
+    }
+  }, []);
+
   const { mutate: initiate, isPending } = useMutation({
-    // Backend takes { plan, interval } — not planId
     mutationFn: (plan: 'PRO' | 'PREMIUM') =>
       subscriptionsApi.initiate({ plan, interval: 'MONTHLY' }).then(r => r.data as any),
-    onSuccess: async (data: any) => { await Linking.openURL(data.authorizationUrl); },
+    onSuccess: (data: any) => openPaystack(data.authorizationUrl),
     onError: (err) => Alert.alert('Payment Error', getApiError(err)),
   });
 
@@ -103,6 +157,19 @@ export default function SubscriptionScreen() {
         <Text style={styles.headerTitle}>Plans</Text>
         <View style={{ width: 60 }} />
       </View>
+
+      {awaitingPayment && (
+        <View style={styles.paymentBanner}>
+          <Text style={styles.paymentBannerText}>
+            {Platform.OS === 'web' ? '⏳ Waiting for payment…' : '⏳ Complete payment in your browser'}
+          </Text>
+          {Platform.OS !== 'web' && (
+            <TouchableOpacity onPress={handlePaystackSuccess} style={styles.paymentBannerBtn}>
+              <Text style={styles.paymentBannerBtnText}>I've paid ✓</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Hero */}
@@ -301,4 +368,13 @@ const styles = StyleSheet.create({
   freeNote: { marginTop: spacing[4], backgroundColor: colors.glass, borderRadius: radius.md, padding: spacing[3] },
   freeNoteText: { fontFamily: typography.family.regular, fontSize: typography.size.xs, color: colors.textMuted, textAlign: 'center', lineHeight: 18 },
   footerNote: { fontFamily: typography.family.regular, fontSize: typography.size.xs, color: colors.textMuted, textAlign: 'center', lineHeight: 18 },
+
+  paymentBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#1B4FA820', borderBottomWidth: 1, borderBottomColor: '#1B4FA840',
+    paddingHorizontal: spacing[5], paddingVertical: spacing[3],
+  },
+  paymentBannerText: { fontFamily: typography.family.semibold, fontSize: typography.size.sm, color: colors.textSec, flex: 1 },
+  paymentBannerBtn: { backgroundColor: colors.klakGreen, borderRadius: radius.full, paddingHorizontal: spacing[4], paddingVertical: spacing[2], marginLeft: spacing[3] },
+  paymentBannerBtnText: { fontFamily: typography.family.bold, fontSize: typography.size.sm, color: '#000' },
 });
