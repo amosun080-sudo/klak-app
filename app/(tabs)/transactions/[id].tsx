@@ -4,17 +4,19 @@ import {
   TouchableOpacity, ActivityIndicator, Modal, FlatList, Alert,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { router, useLocalSearchParams } from 'expo-router';
-import { transactionsApi, getApiError } from '../../../src/lib/api/index';
+import { useLocalSearchParams } from 'expo-router';
+import { transactionsApi, categoriesApi, getApiError } from '../../../src/lib/api/index';
 import { colors } from '../../../src/theme/colors';
 import { typography, spacing, radius, shadow } from '../../../src/theme/index';
 import { Button, Card, Skeleton } from '../../../src/components/layout/index';
-import { formatNairaFull, formatTxDate, getCategoryById, SYSTEM_CATEGORIES, safeBack } from '../../../src/utils/index';
+import { formatNairaFull, formatTxDate, safeBack } from '../../../src/utils/index';
+import type { Category } from '../../../src/types/models';
 
 export default function TransactionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const qc = useQueryClient();
   const [showCatPicker, setShowCatPicker] = useState(false);
+  const [pendingCatId, setPendingCatId] = useState<string | null>(null);
 
   // ── Fetch transaction ─────────────────────────────────────────────────────
   const { data: tx, isLoading } = useQuery({
@@ -23,15 +25,28 @@ export default function TransactionDetailScreen() {
     enabled: !!id,
   });
 
+  // ── Fetch real categories (UUIDs from the backend) ────────────────────────
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn:  () => categoriesApi.list().then(r => {
+      const res = r.data as unknown as { system?: Category[]; custom?: Category[] };
+      return [...(res.system ?? []), ...(res.custom ?? [])] as Category[];
+    }),
+    staleTime: 5 * 60_000,
+  });
+
   // ── Recategorise mutation ─────────────────────────────────────────────────
-  const { mutate: recategorise, isPending: recat } = useMutation({
+  const { mutate: recategorise } = useMutation({
     mutationFn: (categoryId: string) => transactionsApi.recategorise(id, categoryId),
+    onMutate: (categoryId) => setPendingCatId(categoryId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['transaction', id] });
       qc.invalidateQueries({ queryKey: ['transactions'] });
+      setPendingCatId(null);
       setShowCatPicker(false);
     },
     onError: (err) => {
+      setPendingCatId(null);
       Alert.alert('Recategorise Failed', getApiError(err));
     },
   });
@@ -48,7 +63,8 @@ export default function TransactionDetailScreen() {
 
   if (!tx) return null;
 
-  const cat     = getCategoryById(tx.categoryId ?? tx.category?.id);
+  // Prefer the category object already on the transaction; fall back to categories list
+  const cat = tx.category ?? categories.find((c: Category) => c.id === tx.categoryId) ?? { name: 'Other', icon: '📦', color: '#9CA3AF' };
   const isDebit = tx.amount < 0;
   const amountColor = isDebit ? colors.alertRed : colors.klakGreen;
   const amountPrefix = isDebit ? '-' : '+';
@@ -116,24 +132,29 @@ export default function TransactionDetailScreen() {
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>Choose category</Text>
             <FlatList
-              data={SYSTEM_CATEGORIES}
+              data={categories}
               keyExtractor={c => c.id}
-              renderItem={({ item: c }) => (
-                <TouchableOpacity
-                  style={styles.catPickerRow}
-                  onPress={() => recategorise(c.id)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.catPickerIcon, { backgroundColor: c.color + '20' }]}>
-                    <Text style={{ fontSize: 20 }}>{c.icon}</Text>
-                  </View>
-                  <Text style={styles.catPickerName}>{c.name}</Text>
-                  {(tx.categoryId === c.id || tx.category?.id === c.id) && (
-                    <Text style={{ color: colors.klakGreen, fontSize: 18 }}>✓</Text>
-                  )}
-                  {recat && <ActivityIndicator size="small" color={colors.klakBlue} />}
-                </TouchableOpacity>
-              )}
+              renderItem={({ item: c }) => {
+                const isActive  = tx.category?.id === c.id || tx.categoryId === c.id;
+                const isPending = pendingCatId === c.id;
+                return (
+                  <TouchableOpacity
+                    style={styles.catPickerRow}
+                    onPress={() => !pendingCatId && recategorise(c.id)}
+                    activeOpacity={0.7}
+                    disabled={!!pendingCatId}
+                  >
+                    <View style={[styles.catPickerIcon, { backgroundColor: (c.color ?? '#9CA3AF') + '20' }]}>
+                      <Text style={{ fontSize: 20 }}>{c.icon ?? '📦'}</Text>
+                    </View>
+                    <Text style={styles.catPickerName}>{c.name}</Text>
+                    {isPending
+                      ? <ActivityIndicator size="small" color={colors.klakGreen} />
+                      : isActive && <Text style={{ color: colors.klakGreen, fontSize: 18 }}>✓</Text>
+                    }
+                  </TouchableOpacity>
+                );
+              }}
               showsVerticalScrollIndicator={false}
             />
             <Button label="Cancel" onPress={() => setShowCatPicker(false)} variant="outline" style={{ margin: spacing[5] }} />

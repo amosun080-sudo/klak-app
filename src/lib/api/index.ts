@@ -377,20 +377,21 @@ export const subscriptionsApi = {
 
 // ── EXPORTS ───────────────────────────────────────────────────────────────────
 export const exportsApi = {
-  request: (params: { format: 'PDF' | 'EXCEL'; dateFrom: string; dateTo: string }) =>
-    api.post<{ exportId: string; status: string; message: string; format: string; dateFrom: string; dateTo: string }>(
-      '/exports',
-      params,
-    ),
+  /** Builds a signed GET URL for FileSystem.downloadAsync — no body needed */
+  getDownloadUrl: (params: { format: 'PDF' | 'EXCEL'; dateFrom: string; dateTo: string }): string => {
+    const qs = new URLSearchParams({
+      format:   params.format,
+      dateFrom: params.dateFrom,
+      dateTo:   params.dateTo,
+    }).toString();
+    return `${env.apiBaseUrl}/api/v1/exports/download?${qs}`;
+  },
 
   history: async () => {
     const res = await api.get<any[]>('/exports/history');
-    // Normalise to legacy ExportRecord shape
     const records: ExportRecord[] = (res.data ?? []).map((e: any) => ({
       ...e,
-      type:      e.format,
-      url:       e.downloadUrl ?? '',
-      expiresAt: e.urlExpiresAt ?? '',
+      type: e.format,
     }));
     return { ...res, data: { data: records } };
   },

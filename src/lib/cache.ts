@@ -22,7 +22,7 @@ interface CacheEntry<T> {
   version: string; // For cache invalidation on app updates
 }
 
-const CACHE_VERSION = '1.0.0'; // Increment to invalidate all cache
+const CACHE_VERSION = '1.0.1'; // Increment to invalidate all cache
 
 export const cacheManager = {
   /**

@@ -17,15 +17,34 @@ export default function AlertSettingsScreen() {
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['alerts', 'settings'],
-    queryFn: () => alertsApi.settings().then(r => r.data),
+    queryFn: async () => {
+      const raw = await alertsApi.settings().then(r => r.data);
+      return {
+        ...raw,
+        pushEnabled:  raw.channels?.includes('PUSH')  ?? false,
+        smsEnabled:   raw.channels?.includes('SMS')   ?? false,
+        emailEnabled: raw.channels?.includes('EMAIL') ?? false,
+      };
+    },
   });
 
   const { mutate: update } = useMutation({
-    mutationFn: (dto: Parameters<typeof alertsApi.updateSettings>[0]) =>
-      alertsApi.updateSettings(dto),
-    onMutate: async (dto) => {
+    mutationFn: ({ channels, language }: { channels?: Array<'PUSH' | 'EMAIL' | 'SMS'>; language?: 'ENGLISH' | 'PIDGIN' }) =>
+      alertsApi.updateSettings({ channels, language }),
+    onMutate: async ({ channels, language }) => {
       await qc.cancelQueries({ queryKey: ['alerts', 'settings'] });
-      qc.setQueryData(['alerts', 'settings'], (old: any) => ({ ...old, ...dto }));
+      qc.setQueryData(['alerts', 'settings'], (old: any) => {
+        if (channels !== undefined) {
+          return {
+            ...old,
+            channels,
+            pushEnabled:  channels.includes('PUSH'),
+            smsEnabled:   channels.includes('SMS'),
+            emailEnabled: channels.includes('EMAIL'),
+          };
+        }
+        return { ...old, ...(language !== undefined && { language }) };
+      });
     },
     onError: (err) => {
       Alert.alert('Update Failed', getApiError(err));
@@ -36,13 +55,19 @@ export default function AlertSettingsScreen() {
 
   const toggle = (key: 'pushEnabled' | 'smsEnabled' | 'emailEnabled') => {
     if (!settings || isLoading) return;
-    update({ [key]: !settings[key] });
+    const newVal = !settings[key];
+    const channelOf = { pushEnabled: 'PUSH', smsEnabled: 'SMS', emailEnabled: 'EMAIL' } as const;
+    const channels = (['pushEnabled', 'smsEnabled', 'emailEnabled'] as const)
+      .filter(k => k === key ? newVal : settings[k])
+      .map(k => channelOf[k]);
+    update({ channels });
   };
 
   const toggleLanguage = () => {
     if (!settings || isLoading) return;
     update({ language: settings.language === 'ENGLISH' ? 'PIDGIN' : 'ENGLISH' });
   };
+
 
   const rows = [
     { key: 'pushEnabled',  label: 'Push notifications', sub: 'Instant alerts on your phone', icon: '📲' },

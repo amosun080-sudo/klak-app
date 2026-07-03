@@ -217,8 +217,10 @@ const formatSectionTitle = (date: string) => {
 
 export default function TransactionsScreen() {
   const now = currentMonthYear();
-  const [startMonth, setStartMonth] = useState(now.month);
-  const [startYear, setStartYear]   = useState(now.year);
+  // Default to last 3 months (current month + 2 before it)
+  const defaultStart = new Date(now.year, now.month - 3, 1);
+  const [startMonth, setStartMonth] = useState(defaultStart.getMonth() + 1);
+  const [startYear, setStartYear]   = useState(defaultStart.getFullYear());
   const [endMonth, setEndMonth]     = useState(now.month);
   const [endYear, setEndYear]       = useState(now.year);
   const [pickerVisible, setPickerVisible] = useState(false);

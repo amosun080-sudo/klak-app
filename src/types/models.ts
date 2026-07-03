@@ -167,12 +167,13 @@ export interface Insight {
 
 // ── ALERTS ────────────────────────────────────────────────────────────────────
 export interface AlertSettings {
-  budgetAlerts:  boolean;
+  channels:      Array<'PUSH' | 'EMAIL' | 'SMS'>;
+  enabled:       boolean;
+  language:      Language;
+  // derived client-side from channels array:
   pushEnabled:   boolean;
-  emailEnabled:  boolean;
   smsEnabled:    boolean;
-  thresholds:    number[];
-  language?:     Language;
+  emailEnabled:  boolean;
 }
 
 export interface Alert {
