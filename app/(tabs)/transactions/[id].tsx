@@ -5,7 +5,8 @@ import {
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams } from 'expo-router';
-import { transactionsApi, categoriesApi, getApiError } from '../../../src/lib/api/index';
+import { transactionsApi, getApiError } from '../../../src/lib/api/index';
+import api from '../../../src/lib/api';
 import { colors } from '../../../src/theme/colors';
 import { typography, spacing, radius, shadow } from '../../../src/theme/index';
 import { Button, Card, Skeleton } from '../../../src/components/layout/index';
@@ -26,12 +27,14 @@ export default function TransactionDetailScreen() {
   });
 
   // ── Fetch real categories (UUIDs from the backend) ────────────────────────
+  // Bypass withCache so the picker always reflects the live backend state
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
-    queryFn:  () => categoriesApi.list().then(r => {
-      const res = r.data as unknown as { system?: Category[]; custom?: Category[] };
+    queryFn:  async () => {
+      const r = await api.get('/categories');
+      const res = r.data as { system?: Category[]; custom?: Category[] };
       return [...(res.system ?? []), ...(res.custom ?? [])] as Category[];
-    }),
+    },
     staleTime: 5 * 60_000,
   });
 

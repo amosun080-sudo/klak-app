@@ -7,13 +7,12 @@ import {
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { transactionsApi } from '../../../src/lib/api/index';
+import api from '../../../src/lib/api';
 import { colors } from '../../../src/theme/colors';
 import { typography, spacing, radius, shadow } from '../../../src/theme/index';
 import { EmptyState, Skeleton } from '../../../src/components/layout/index';
-import {
-  SYSTEM_CATEGORIES, currentMonthYear,
-  formatNaira, formatTxDate, getCategoryById,
-} from '../../../src/utils/index';
+import { currentMonthYear, formatNaira, formatTxDate } from '../../../src/utils/index';
+import type { Category } from '../../../src/types/models';
 import { BOTTOM_TAB_PADDING } from '../_layout';
 import type { Transaction } from '../../../src/types/models';
 
@@ -229,6 +228,17 @@ export default function TransactionsScreen() {
   const [activeType, setActiveType]         = useState<'DEBIT' | 'CREDIT' | undefined>(undefined);
   const [searchQuery, setSearchQuery]       = useState('');
 
+  // ── Categories for filter chips (real UUIDs from backend) ───────────────────
+  const { data: allCategories = [] } = useQuery<Category[]>({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      const r = await api.get('/categories');
+      const res = r.data as { system?: Category[]; custom?: Category[] };
+      return [...(res.system ?? []), ...(res.custom ?? [])];
+    },
+    staleTime: 10 * 60_000,
+  });
+
   const startDate = `${startYear}-${String(startMonth).padStart(2, '0')}-01`;
   const endDate   = `${endYear}-${String(endMonth).padStart(2, '0')}-${lastDayOfMonth(endMonth, endYear)}`;
 
@@ -355,18 +365,18 @@ export default function TransactionsScreen() {
 
           {[
             { id: undefined, name: 'All', icon: '📋', color: colors.klakGreen },
-            ...SYSTEM_CATEGORIES,
+            ...allCategories,
           ].map(cat => {
             const active = activeCategory === cat.id;
             return (
               <TouchableOpacity
                 key={cat.id ?? 'all'}
                 onPress={() => setActiveCategory(cat.id)}
-                style={[styles.catChip, active && { backgroundColor: cat.color + '22', borderColor: cat.color }]}
+                style={[styles.catChip, active && { backgroundColor: (cat.color ?? colors.klakGreen) + '22', borderColor: cat.color ?? colors.klakGreen }]}
                 activeOpacity={0.75}
               >
-                <Text style={styles.catChipIcon}>{cat.icon}</Text>
-                <Text style={[styles.catChipText, active && { color: cat.color }]}>{cat.name}</Text>
+                <Text style={styles.catChipIcon}>{cat.icon ?? '📋'}</Text>
+                <Text style={[styles.catChipText, active && { color: cat.color ?? colors.klakGreen }]}>{cat.name}</Text>
               </TouchableOpacity>
             );
           })}
@@ -445,7 +455,7 @@ export default function TransactionsScreen() {
             </View>
             <View style={styles.txGroup}>
               {txList.map((tx, i) => {
-                const cat     = getCategoryById(tx.categoryId ?? tx.category?.id);
+                const cat     = tx.category ?? { name: 'Other', icon: '📦', color: '#9CA3AF' };
                 const isDebit = tx.amount < 0;
                 return (
                   <Pressable
